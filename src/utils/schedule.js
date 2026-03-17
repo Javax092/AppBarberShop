@@ -38,7 +38,9 @@ export function isSlotBlocked({
   date,
   startTime,
   totalDuration,
-  appointments
+  appointments,
+  scheduleBlocks = [],
+  ignoreAppointmentId = ""
 }) {
   const day = new Date(`${date}T12:00:00`).getDay();
   if (barber.daysOff.includes(day)) {
@@ -62,8 +64,32 @@ export function isSlotBlocked({
     return true;
   }
 
+  const barberBlocks = scheduleBlocks.filter(
+    (block) =>
+      (block.barberId === barber.id || !block.barberId) &&
+      block.date === date
+  );
+
+  const hasManualBlockConflict = barberBlocks.some((block) => {
+    if (block.isAllDay) {
+      return true;
+    }
+
+    return overlaps(
+      start,
+      end,
+      timeToMinutes(block.startTime),
+      timeToMinutes(block.endTime)
+    );
+  });
+
+  if (hasManualBlockConflict) {
+    return true;
+  }
+
   const barberAppointments = appointments.filter(
     (appointment) =>
+      appointment.id !== ignoreAppointmentId &&
       appointment.barberId === barber.id &&
       appointment.date === date &&
       appointment.status !== "cancelled"
@@ -79,7 +105,14 @@ export function isSlotBlocked({
   );
 }
 
-export function generateTimeSlots({ barber, date, totalDuration, appointments }) {
+export function generateTimeSlots({
+  barber,
+  date,
+  totalDuration,
+  appointments,
+  scheduleBlocks = [],
+  ignoreAppointmentId = ""
+}) {
   const slots = [];
   const start = timeToMinutes(barber.workingHours.start);
   const end = timeToMinutes(barber.workingHours.end);
@@ -93,7 +126,9 @@ export function generateTimeSlots({ barber, date, totalDuration, appointments })
         date,
         startTime,
         totalDuration,
-        appointments
+        appointments,
+        scheduleBlocks,
+        ignoreAppointmentId
       })
     });
   }
