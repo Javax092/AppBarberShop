@@ -1,18 +1,19 @@
 :root {
   color-scheme: dark;
-  --bg: #060709;
-  --panel: rgba(13, 16, 21, 0.88);
-  --panel-strong: rgba(18, 22, 29, 0.96);
-  --panel-soft: rgba(255, 255, 255, 0.03);
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(215, 173, 93, 0.3);
-  --text: #f8f1e7;
-  --muted: #a6a29c;
-  --gold: #d6a75d;
-  --gold-strong: #f0c277;
+  --bg: #07090d;
+  --panel: rgba(12, 16, 22, 0.82);
+  --panel-strong: rgba(18, 24, 33, 0.95);
+  --panel-soft: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(193, 154, 84, 0.38);
+  --text: #f6efe4;
+  --muted: #a8a39a;
+  --gold: #bf9350;
+  --gold-strong: #e3bc7c;
+  --blue: #7ea9d9;
   --green: #3cca8e;
   --danger: #ff7f7f;
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  --shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
   font-family: "Inter", system-ui, sans-serif;
 }
 
@@ -24,9 +25,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(214, 167, 93, 0.14), transparent 24%),
-    radial-gradient(circle at left, rgba(255, 255, 255, 0.05), transparent 18%),
-    linear-gradient(180deg, #050607, #0a0d12 48%, #090b10);
+    radial-gradient(circle at top left, rgba(191, 147, 80, 0.18), transparent 24%),
+    radial-gradient(circle at top right, rgba(126, 169, 217, 0.12), transparent 28%),
+    linear-gradient(180deg, #050608, #090d13 44%, #0d1219);
   color: var(--text);
 }
 
@@ -44,7 +45,7 @@ a {
 .app-shell {
   width: min(1240px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 32px 0 48px;
+  padding: 34px 0 56px;
 }
 
 .hero-card,
@@ -60,10 +61,20 @@ a {
 .hero-card {
   display: grid;
   grid-template-columns: 1.25fr 0.75fr;
-  gap: 24px;
-  padding: 32px;
+  gap: 28px;
+  padding: 36px;
   border-radius: 32px;
   overflow: hidden;
+  position: relative;
+}
+
+.hero-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -8% -30% 52%;
+  height: 340px;
+  background: radial-gradient(circle, rgba(191, 147, 80, 0.24), transparent 68%);
+  pointer-events: none;
 }
 
 .eyebrow,
@@ -92,17 +103,17 @@ a {
 }
 
 .hero-copy h1 {
-  margin-top: 18px;
+  margin-top: 16px;
   font-size: clamp(3rem, 7vw, 5.6rem);
-  line-height: 0.9;
+  line-height: 0.92;
 }
 
 .hero-copy p {
   max-width: 52rem;
-  margin: 14px 0 0;
+  margin: 16px 0 0;
   color: var(--muted);
-  font-size: 1.03rem;
-  line-height: 1.7;
+  font-size: 1.05rem;
+  line-height: 1.75;
 }
 
 .hero-pills,
@@ -118,7 +129,7 @@ a {
 }
 
 .hero-pills {
-  margin-top: 22px;
+  margin-top: 24px;
 }
 
 .hero-pills span,
@@ -126,7 +137,7 @@ a {
 .pill-switch button {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--line);
 }
 
@@ -136,8 +147,7 @@ a {
 }
 
 .stat-card,
-.notice-box,
-.roadmap-box {
+.notice-box {
   padding: 20px;
   border-radius: 24px;
   background: var(--panel-strong);
@@ -146,20 +156,20 @@ a {
 
 .stat-card strong {
   display: block;
-  font-size: 1.6rem;
+  font-size: 1.9rem;
   color: var(--gold-strong);
 }
 
 .stat-card span,
-.notice-box,
-.roadmap-box p {
+.notice-box {
   color: var(--muted);
 }
 
 .tabbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin: 18px 0;
+  margin: 22px 0;
 }
 
 .infra-banner {
@@ -203,11 +213,12 @@ a {
 
 .tabbar button {
   flex: 1;
-  padding: 16px 18px;
-  border-radius: 18px;
+  padding: 17px 18px;
+  border-radius: 20px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.035);
   color: var(--text);
+  font-weight: 600;
 }
 
 .tabbar button.active,
@@ -224,7 +235,7 @@ a {
 .layout-grid {
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
-  gap: 18px;
+  gap: 20px;
 }
 
 .layout-grid.single-column {
@@ -232,8 +243,8 @@ a {
 }
 
 .glass-card {
-  padding: 24px;
-  border-radius: 28px;
+  padding: 28px;
+  border-radius: 30px;
 }
 
 .section-head {
@@ -245,8 +256,8 @@ a {
 }
 
 .section-head h2 {
-  font-size: 2.2rem;
-  line-height: 0.92;
+  font-size: 2.15rem;
+  line-height: 0.94;
 }
 
 .section-head p {
@@ -268,7 +279,9 @@ a {
 .barber-card,
 .agenda-card,
 .whatsapp-card,
-.confirmation-box {
+.confirmation-box,
+.metric-card,
+.admin-card {
   border: 1px solid var(--line);
   background: var(--panel-strong);
   border-radius: 24px;
@@ -278,6 +291,15 @@ a {
 .barber-card {
   padding: 18px;
   text-align: left;
+}
+
+.service-card:hover,
+.barber-card:hover,
+.agenda-card:hover,
+.whatsapp-card:hover,
+.admin-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(227, 188, 124, 0.22);
 }
 
 .service-topline {
@@ -319,7 +341,9 @@ a {
   display: grid;
   place-items: center;
   border-radius: 24px;
-  background: linear-gradient(135deg, #f0c277, #7c5926);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.28), transparent 38%),
+    linear-gradient(135deg, #f0c277, #7c5926);
   color: #15100a;
   font-weight: 800;
   font-size: 1.4rem;
@@ -366,9 +390,17 @@ a {
 .form-grid textarea {
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.025);
   color: var(--text);
   padding: 14px 16px;
+}
+
+.form-grid input:focus,
+.form-grid textarea:focus,
+.admin-filters select:focus {
+  outline: none;
+  border-color: rgba(227, 188, 124, 0.34);
+  box-shadow: 0 0 0 4px rgba(227, 188, 124, 0.08);
 }
 
 .form-grid textarea {
@@ -394,6 +426,7 @@ a {
   border-radius: 16px;
   border: 1px solid transparent;
   padding: 0 18px;
+  font-weight: 700;
 }
 
 .primary-button {
@@ -442,6 +475,8 @@ a {
   display: grid;
   align-content: start;
   gap: 18px;
+  position: sticky;
+  top: 24px;
 }
 
 .confirmation-box {
@@ -496,16 +531,6 @@ a {
   color: var(--muted);
 }
 
-.roadmap-box {
-  margin-top: 18px;
-}
-
-.roadmap-box strong {
-  display: block;
-  margin-top: 10px;
-  color: var(--gold-strong);
-}
-
 .status-pill {
   display: inline-flex;
   width: fit-content;
@@ -547,8 +572,6 @@ a {
 .admin-card {
   padding: 18px;
   border-radius: 22px;
-  border: 1px solid var(--line);
-  background: var(--panel-strong);
 }
 
 .metric-card strong {
@@ -641,8 +664,13 @@ a {
   .whatsapp-grid,
   .form-grid,
   .admin-stats,
-  .admin-filters {
+  .admin-filters,
+  .tabbar {
     grid-template-columns: 1fr;
+  }
+
+  .summary-card {
+    position: static;
   }
 }
 

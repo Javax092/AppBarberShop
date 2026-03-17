@@ -338,59 +338,50 @@ function App() {
     <div className="app-shell">
       <header className="hero-card">
         <div className="hero-copy">
-          <span className="eyebrow">Dark premium booking suite</span>
+          <span className="eyebrow">Agenda profissional</span>
           <h1>O Pai ta on</h1>
           <p>
-            Um fluxo vendavel com agendamento premium, painel do barbeiro, painel
-            de admin e acao de WhatsApp pronta para operar sem conflito de horarios.
+            Operacao completa para agendamento, acompanhamento da equipe e atendimento
+            ao cliente em um fluxo unico, organizado e pronto para rodar.
           </p>
           <div className="hero-pills">
-            <span>Cliente</span>
-            <span>Painel</span>
-            <span>Admin</span>
+            <span>Atendimento</span>
+            <span>Equipe</span>
+            <span>Operacao</span>
             <span>WhatsApp</span>
-            <span>Sem choque de agenda</span>
+            <span>Agenda protegida</span>
           </div>
         </div>
         <div className="hero-stats">
           <div className="stat-card">
             <strong>{adminStats.today}</strong>
-            <span>agendamentos hoje</span>
+            <span>atendimentos hoje</span>
           </div>
           <div className="stat-card">
             <strong>{adminStats.confirmed}</strong>
-            <span>confirmados</span>
+            <span>reservas confirmadas</span>
           </div>
           <div className="stat-card">
-            <strong>Banco real</strong>
-            <span>{dataSource === "supabase" ? "Supabase conectado" : "modo local fallback"}</span>
+            <strong>{barbers.length}</strong>
+            <span>profissionais em escala</span>
           </div>
         </div>
       </header>
-
-      <div className={`infra-banner ${dataSource === "supabase" ? "success" : ""}`}>
-        <strong>{dataSource === "supabase" ? "Supabase ativo." : "Supabase nao configurado."}</strong>
-        <span>
-          {dataSource === "supabase"
-            ? "Os agendamentos estao sendo lidos, geridos e gravados no banco."
-            : "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para sair do fallback local."}
-        </span>
-      </div>
 
       {loadError ? <div className="infra-banner error">{loadError}</div> : null}
 
       <nav className="tabbar">
         <button className={activeView === "booking" ? "active" : ""} onClick={() => setActiveView("booking")}>
-          01. Cliente
+          Agenda
         </button>
         <button className={activeView === "panel" ? "active" : ""} onClick={() => setActiveView("panel")}>
-          02. Painel do barbeiro
+          Equipe
         </button>
         <button className={activeView === "whatsapp" ? "active" : ""} onClick={() => setActiveView("whatsapp")}>
-          03. WhatsApp operacional
+          WhatsApp
         </button>
         <button className={activeView === "admin" ? "active" : ""} onClick={() => setActiveView("admin")}>
-          04. Admin
+          Gestao
         </button>
       </nav>
 
@@ -399,10 +390,10 @@ function App() {
           <section className="glass-card">
             <div className="section-head">
               <div>
-                <span className="mini-badge">Passo 1</span>
-                <h2>Monte o atendimento</h2>
+                <span className="mini-badge">Servicos</span>
+                <h2>Desenhe o atendimento</h2>
               </div>
-              <p>O cliente pode selecionar mais de um servico no mesmo horario.</p>
+              <p>Monte a reserva com combinacoes de servicos no mesmo horario.</p>
             </div>
 
             <div className="service-grid">
@@ -429,10 +420,10 @@ function App() {
 
             <div className="section-head">
               <div>
-                <span className="mini-badge">Passo 2</span>
-                <h2>Escolha o barbeiro</h2>
+                <span className="mini-badge">Profissional</span>
+                <h2>Defina quem assume a cadeira</h2>
               </div>
-              <p>Agenda individual e bloqueio automatico por profissional.</p>
+              <p>Cada agenda respeita disponibilidade, intervalo e bloqueio por profissional.</p>
             </div>
 
             <div className="barber-grid">
@@ -460,10 +451,10 @@ function App() {
 
             <div className="section-head">
               <div>
-                <span className="mini-badge">Passo 3</span>
-                <h2>Data e horario</h2>
+                <span className="mini-badge">Disponibilidade</span>
+                <h2>Escolha a melhor janela</h2>
               </div>
-              <p>Intervalos de 10 minutos com buffer automatico de atendimento.</p>
+              <p>Os horarios ja consideram duracao, buffer operacional e agenda ocupada.</p>
             </div>
 
             <div className="day-row">
@@ -496,10 +487,10 @@ function App() {
 
             <div className="section-head">
               <div>
-                <span className="mini-badge">Passo 4</span>
-                <h2>Dados do cliente</h2>
+                <span className="mini-badge">Cliente</span>
+                <h2>Finalize os dados da reserva</h2>
               </div>
-              <p>Pronto para confirmar e disparar atendimento por WhatsApp.</p>
+              <p>Confirme os dados do cliente para registrar a reserva e seguir com o atendimento.</p>
             </div>
 
             <div className="form-grid">
@@ -522,7 +513,7 @@ function App() {
                 {isSaving ? "Salvando agendamento..." : "Confirmar agendamento"}
               </button>
               <button className="secondary-button" onClick={resetForm}>
-                Limpar fluxo
+                Limpar formulario
               </button>
             </div>
           </section>
@@ -530,8 +521,8 @@ function App() {
           <aside className="glass-card summary-card">
             <div className="section-head">
               <div>
-                <span className="mini-badge">Resumo live</span>
-                <h2>Proposta do agendamento</h2>
+                <span className="mini-badge">Resumo</span>
+                <h2>Visao da reserva</h2>
               </div>
             </div>
 
@@ -540,16 +531,16 @@ function App() {
               <div><dt>Barbeiro</dt><dd>{selectedBarber.name}</dd></div>
               <div><dt>Data</dt><dd>{formatLongDate(selectedDate)}</dd></div>
               <div><dt>Horario</dt><dd>{selectedTime || "Selecione um horario"}</dd></div>
-              <div><dt>Duracao de servicos</dt><dd>{totals.serviceDuration} min</dd></div>
-              <div><dt>Buffer operacional</dt><dd>{totals.buffer} min</dd></div>
-              <div><dt>Janela bloqueada</dt><dd>{totals.totalDuration} min</dd></div>
+              <div><dt>Duracao</dt><dd>{totals.serviceDuration} min</dd></div>
+              <div><dt>Preparacao</dt><dd>{totals.buffer} min</dd></div>
+              <div><dt>Tempo reservado</dt><dd>{totals.totalDuration} min</dd></div>
               <div><dt>Total</dt><dd>{formatCurrency(totals.subtotal)}</dd></div>
             </dl>
 
             {confirmation ? (
               <div className="confirmation-box">
                 <div className="confirmation-top">
-                  <span className="mini-badge">Reserva premium confirmada</span>
+                  <span className="mini-badge">Confirmado</span>
                   <strong>{confirmation.id}</strong>
                 </div>
                 <p>
@@ -568,8 +559,8 @@ function App() {
             ) : (
               <div className="notice-box">
                 {isLoadingAppointments
-                  ? "Carregando agenda persistida..."
-                  : "Selecione horario e confirme para gravar o agendamento de forma persistente."}
+                  ? "Carregando agenda..."
+                  : "Revise servicos, profissional e horario antes de confirmar a reserva."}
               </div>
             )}
           </aside>
@@ -581,10 +572,10 @@ function App() {
           <section className="glass-card">
             <div className="section-head">
               <div>
-                <span className="mini-badge">Painel 02</span>
-                <h2>Agenda do barbeiro</h2>
+                <span className="mini-badge">Equipe</span>
+                <h2>Agenda da equipe</h2>
               </div>
-              <p>Visao operacional para atender, confirmar e evitar sobreposicao.</p>
+              <p>Visualize a rotina de cada profissional com clareza e sem conflito de horarios.</p>
             </div>
 
             <div className="panel-toolbar">
@@ -637,10 +628,10 @@ function App() {
           <section className="glass-card">
             <div className="section-head">
               <div>
-                <span className="mini-badge">Fluxo 03</span>
-                <h2>WhatsApp operacional</h2>
+                <span className="mini-badge">Relacionamento</span>
+                <h2>Central de WhatsApp</h2>
               </div>
-              <p>Use como prova de venda agora. Depois, substitua por API oficial.</p>
+              <p>Ative contato rapido com cliente e barbeiro a partir das reservas confirmadas.</p>
             </div>
 
             <div className="whatsapp-grid">
@@ -676,10 +667,10 @@ function App() {
           <section className="glass-card">
             <div className="section-head">
               <div>
-                <span className="mini-badge">Painel 04</span>
-                <h2>Admin da operacao</h2>
+                <span className="mini-badge">Gestao</span>
+                <h2>Controle da operacao</h2>
               </div>
-              <p>Gerencie a agenda, filtre a operacao e controle o status dos agendamentos.</p>
+              <p>Filtre a agenda, acompanhe os indicadores do dia e atualize o status das reservas.</p>
             </div>
 
             <div className="admin-stats">
