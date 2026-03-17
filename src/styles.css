@@ -506,6 +506,130 @@ a {
   color: var(--gold-strong);
 }
 
+.status-pill {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.status-pill.confirmed {
+  border-color: rgba(60, 202, 142, 0.3);
+  background: rgba(60, 202, 142, 0.08);
+  color: #9df2ca;
+}
+
+.status-pill.cancelled {
+  border-color: rgba(255, 127, 127, 0.3);
+  background: rgba(255, 127, 127, 0.08);
+  color: #ffb4b4;
+}
+
+.admin-stats,
+.admin-filters,
+.admin-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.metric-card,
+.admin-card {
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.metric-card strong {
+  display: block;
+  font-size: 1.8rem;
+  color: var(--gold-strong);
+}
+
+.metric-card span {
+  color: var(--muted);
+}
+
+.admin-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.admin-filters label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.admin-filters select {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  padding: 14px 16px;
+}
+
+.admin-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.admin-card-main h3 {
+  margin: 12px 0 6px;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 2rem;
+}
+
+.admin-card-main p,
+.admin-card-meta span {
+  color: var(--muted);
+}
+
+.admin-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.admin-card-meta span {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-card-actions {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.danger-button {
+  border-color: rgba(255, 127, 127, 0.2);
+  color: #ffb4b4;
+}
+
 @media (max-width: 1080px) {
   .hero-card,
   .layout-grid {
@@ -515,7 +639,9 @@ a {
   .service-grid,
   .barber-grid,
   .whatsapp-grid,
-  .form-grid {
+  .form-grid,
+  .admin-stats,
+  .admin-filters {
     grid-template-columns: 1fr;
   }
 }
@@ -531,7 +657,8 @@ a {
   .section-head,
   .agenda-card,
   .whatsapp-card,
-  .infra-banner {
+  .infra-banner,
+  .admin-card {
     display: grid;
   }
 

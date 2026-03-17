@@ -84,3 +84,32 @@ export async function createAppointment(appointment) {
     data: normalizeAppointment(data)
   };
 }
+
+export async function updateAppointmentStatus(appointmentId, status) {
+  if (!isSupabaseConfigured()) {
+    return {
+      source: "local",
+      data: {
+        id: appointmentId,
+        status
+      }
+    };
+  }
+
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({ status })
+    .eq("id", appointmentId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    source: "supabase",
+    data: normalizeAppointment(data)
+  };
+}

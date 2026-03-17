@@ -48,3 +48,11 @@ create policy "public_insert_appointments"
   for insert
   to anon
   with check (status = 'confirmed');
+
+drop policy if exists "public_update_appointments" on public.appointments;
+create policy "public_update_appointments"
+  on public.appointments
+  for update
+  to anon
+  using (true)
+  with check (status in ('confirmed', 'cancelled'));

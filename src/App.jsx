@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { barbers, services } from "./data";
-import { createAppointment, listAppointments } from "./lib/appointments";
+import {
+  createAppointment,
+  listAppointments,
+  updateAppointmentStatus
+} from "./lib/appointments";
 import { isSupabaseConfigured } from "./lib/supabase";
 import {
   buildAppointmentEnd,
@@ -29,8 +33,12 @@ function App() {
   const [confirmation, setConfirmation] = useState(null);
   const [activeView, setActiveView] = useState("booking");
   const [selectedPanelBarberId, setSelectedPanelBarberId] = useState(barbers[0].id);
+  const [adminBarberFilter, setAdminBarberFilter] = useState("all");
+  const [adminStatusFilter, setAdminStatusFilter] = useState("all");
+  const [adminDateFilter, setAdminDateFilter] = useState("all");
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [statusUpdateId, setStatusUpdateId] = useState("");
   const [dataSource, setDataSource] = useState(isSupabaseConfigured() ? "supabase" : "local");
   const [loadError, setLoadError] = useState("");
 
@@ -111,7 +119,81 @@ function App() {
     });
   }, [appointmentsByBarber, selectedPanelBarberId]);
 
+  const adminAppointments = useMemo(() => {
+    return appointments
+      .filter((appointment) => {
+        if (adminBarberFilter !== "all" && appointment.barberId !== adminBarberFilter) {
+          return false;
+        }
+
+        if (adminStatusFilter !== "all" && appointment.status !== adminStatusFilter) {
+          return false;
+        }
+
+        if (adminDateFilter !== "all" && appointment.date !== adminDateFilter) {
+          return false;
+        }
+
+        return true;
+      })
+      .slice()
+      .sort((left, right) => {
+        if (left.date !== right.date) {
+          return left.date.localeCompare(right.date);
+        }
+
+        return left.startTime.localeCompare(right.startTime);
+      });
+  }, [adminBarberFilter, adminDateFilter, adminStatusFilter, appointments]);
+
+  const adminStats = useMemo(() => {
+    const confirmed = appointments.filter((appointment) => appointment.status === "confirmed");
+    const cancelled = appointments.filter((appointment) => appointment.status === "cancelled");
+    const todayCount = appointments.filter((appointment) => appointment.date === dateOptions[0]).length;
+
+    return {
+      total: appointments.length,
+      confirmed: confirmed.length,
+      cancelled: cancelled.length,
+      today: todayCount
+    };
+  }, [appointments]);
+
   const summaryServices = selectedServices.map((service) => service.name).join(", ");
+
+  function hydrateAppointmentView(baseAppointment) {
+    const barber = barbers.find((item) => item.id === baseAppointment.barberId);
+    const appointmentServices = services.filter((service) =>
+      baseAppointment.serviceIds.includes(service.id)
+    );
+    const appointmentTotals = getServiceTotals(appointmentServices);
+
+    return {
+      ...baseAppointment,
+      barber,
+      services: appointmentServices,
+      subtotal: appointmentTotals.subtotal,
+      serviceDuration: appointmentTotals.serviceDuration,
+      totalDuration: appointmentTotals.totalDuration,
+      clientWhatsappLink: buildWhatsAppLink(
+        baseAppointment.clientWhatsapp,
+        buildClientWhatsAppMessage({
+          ...baseAppointment,
+          barber,
+          services: appointmentServices,
+          subtotal: appointmentTotals.subtotal
+        })
+      ),
+      barberWhatsappLink: buildWhatsAppLink(
+        barber.phone,
+        buildBarberWhatsAppMessage({
+          ...baseAppointment,
+          barber,
+          services: appointmentServices
+        })
+      )
+    };
+  }
 
   function toggleService(serviceId) {
     setSelectedTime("");
@@ -192,7 +274,11 @@ function App() {
 
     try {
       const barberAppointments = appointmentsByBarber[selectedBarber.id] ?? [];
-      const bookingCode = buildBookingCode(selectedBarber.shortCode, selectedDate, barberAppointments.length);
+      const bookingCode = buildBookingCode(
+        selectedBarber.shortCode,
+        selectedDate,
+        barberAppointments.length
+      );
       const endTime = buildAppointmentEnd(selectedTime, totals.totalDuration);
 
       const appointmentDraft = {
@@ -212,43 +298,39 @@ function App() {
       const persisted = await createAppointment(appointmentDraft);
       setDataSource(persisted.source);
       setAppointments((current) => [...current, persisted.data]);
-
-      const appointmentView = {
-        ...persisted.data,
-        barber: selectedBarber,
-        services: selectedServices,
-        subtotal: totals.subtotal,
-        serviceDuration: totals.serviceDuration,
-        totalDuration: totals.totalDuration,
-        clientWhatsappLink: buildWhatsAppLink(
-          clientWhatsapp,
-          buildClientWhatsAppMessage({
-            ...persisted.data,
-            barber: selectedBarber,
-            services: selectedServices,
-            subtotal: totals.subtotal
-          })
-        ),
-        barberWhatsappLink: buildWhatsAppLink(
-          selectedBarber.phone,
-          buildBarberWhatsAppMessage({
-            ...persisted.data,
-            barber: selectedBarber,
-            services: selectedServices
-          })
-        )
-      };
-
-      setConfirmation(appointmentView);
+      setConfirmation(hydrateAppointmentView(persisted.data));
       setLoadError("");
       setActiveView("booking");
     } catch (saveError) {
-      window.alert(
-        saveError.message ||
-          "Nao foi possivel salvar o agendamento no banco."
-      );
+      window.alert(saveError.message || "Nao foi possivel salvar o agendamento no banco.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleStatusChange(appointmentId, nextStatus) {
+    setStatusUpdateId(appointmentId);
+
+    try {
+      const updated = await updateAppointmentStatus(appointmentId, nextStatus);
+      setDataSource(updated.source);
+      setAppointments((current) =>
+        current.map((appointment) =>
+          appointment.id === appointmentId
+            ? { ...appointment, ...(updated.source === "supabase" ? updated.data : { status: nextStatus }) }
+            : appointment
+        )
+      );
+
+      setConfirmation((current) =>
+        current && current.id === appointmentId
+          ? { ...current, status: nextStatus }
+          : current
+      );
+    } catch (error) {
+      window.alert(error.message || "Nao foi possivel atualizar o status.");
+    } finally {
+      setStatusUpdateId("");
     }
   }
 
@@ -259,24 +341,25 @@ function App() {
           <span className="eyebrow">Dark premium booking suite</span>
           <h1>O Pai ta on</h1>
           <p>
-            Um fluxo vendavel com agendamento premium, painel do barbeiro e acao
-            de WhatsApp pronta para operar sem conflito de horarios.
+            Um fluxo vendavel com agendamento premium, painel do barbeiro, painel
+            de admin e acao de WhatsApp pronta para operar sem conflito de horarios.
           </p>
           <div className="hero-pills">
             <span>Cliente</span>
             <span>Painel</span>
+            <span>Admin</span>
             <span>WhatsApp</span>
             <span>Sem choque de agenda</span>
           </div>
         </div>
         <div className="hero-stats">
           <div className="stat-card">
-            <strong>10 min</strong>
-            <span>grade minima</span>
+            <strong>{adminStats.today}</strong>
+            <span>agendamentos hoje</span>
           </div>
           <div className="stat-card">
-            <strong>10 a 15 min</strong>
-            <span>buffer operacional</span>
+            <strong>{adminStats.confirmed}</strong>
+            <span>confirmados</span>
           </div>
           <div className="stat-card">
             <strong>Banco real</strong>
@@ -289,7 +372,7 @@ function App() {
         <strong>{dataSource === "supabase" ? "Supabase ativo." : "Supabase nao configurado."}</strong>
         <span>
           {dataSource === "supabase"
-            ? "Os agendamentos estao sendo lidos e gravados no banco."
+            ? "Os agendamentos estao sendo lidos, geridos e gravados no banco."
             : "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para sair do fallback local."}
         </span>
       </div>
@@ -297,23 +380,17 @@ function App() {
       {loadError ? <div className="infra-banner error">{loadError}</div> : null}
 
       <nav className="tabbar">
-        <button
-          className={activeView === "booking" ? "active" : ""}
-          onClick={() => setActiveView("booking")}
-        >
+        <button className={activeView === "booking" ? "active" : ""} onClick={() => setActiveView("booking")}>
           01. Cliente
         </button>
-        <button
-          className={activeView === "panel" ? "active" : ""}
-          onClick={() => setActiveView("panel")}
-        >
+        <button className={activeView === "panel" ? "active" : ""} onClick={() => setActiveView("panel")}>
           02. Painel do barbeiro
         </button>
-        <button
-          className={activeView === "whatsapp" ? "active" : ""}
-          onClick={() => setActiveView("whatsapp")}
-        >
+        <button className={activeView === "whatsapp" ? "active" : ""} onClick={() => setActiveView("whatsapp")}>
           03. WhatsApp operacional
+        </button>
+        <button className={activeView === "admin" ? "active" : ""} onClick={() => setActiveView("admin")}>
+          04. Admin
         </button>
       </nav>
 
@@ -432,10 +509,7 @@ function App() {
               </label>
               <label>
                 WhatsApp
-                <input
-                  value={clientWhatsapp}
-                  onChange={(event) => setClientWhatsapp(event.target.value)}
-                />
+                <input value={clientWhatsapp} onChange={(event) => setClientWhatsapp(event.target.value)} />
               </label>
               <label className="full">
                 Observacoes
@@ -462,38 +536,14 @@ function App() {
             </div>
 
             <dl className="summary-list">
-              <div>
-                <dt>Servicos</dt>
-                <dd>{summaryServices || "Selecione ao menos um servico"}</dd>
-              </div>
-              <div>
-                <dt>Barbeiro</dt>
-                <dd>{selectedBarber.name}</dd>
-              </div>
-              <div>
-                <dt>Data</dt>
-                <dd>{formatLongDate(selectedDate)}</dd>
-              </div>
-              <div>
-                <dt>Horario</dt>
-                <dd>{selectedTime || "Selecione um horario"}</dd>
-              </div>
-              <div>
-                <dt>Duracao de servicos</dt>
-                <dd>{totals.serviceDuration} min</dd>
-              </div>
-              <div>
-                <dt>Buffer operacional</dt>
-                <dd>{totals.buffer} min</dd>
-              </div>
-              <div>
-                <dt>Janela bloqueada</dt>
-                <dd>{totals.totalDuration} min</dd>
-              </div>
-              <div>
-                <dt>Total</dt>
-                <dd>{formatCurrency(totals.subtotal)}</dd>
-              </div>
+              <div><dt>Servicos</dt><dd>{summaryServices || "Selecione ao menos um servico"}</dd></div>
+              <div><dt>Barbeiro</dt><dd>{selectedBarber.name}</dd></div>
+              <div><dt>Data</dt><dd>{formatLongDate(selectedDate)}</dd></div>
+              <div><dt>Horario</dt><dd>{selectedTime || "Selecione um horario"}</dd></div>
+              <div><dt>Duracao de servicos</dt><dd>{totals.serviceDuration} min</dd></div>
+              <div><dt>Buffer operacional</dt><dd>{totals.buffer} min</dd></div>
+              <div><dt>Janela bloqueada</dt><dd>{totals.totalDuration} min</dd></div>
+              <div><dt>Total</dt><dd>{formatCurrency(totals.subtotal)}</dd></div>
             </dl>
 
             {confirmation ? (
@@ -503,8 +553,8 @@ function App() {
                   <strong>{confirmation.id}</strong>
                 </div>
                 <p>
-                  {confirmation.clientName}, seu horario com {confirmation.barber.name} foi
-                  reservado para {formatLongDate(confirmation.date)} as {confirmation.startTime}.
+                  {confirmation.clientName}, seu horario com {confirmation.barber.name} foi reservado para{" "}
+                  {formatLongDate(confirmation.date)} as {confirmation.startTime}.
                 </p>
                 <div className="actions-stack">
                   <a className="primary-button" href={confirmation.clientWhatsappLink} target="_blank" rel="noreferrer">
@@ -567,12 +617,11 @@ function App() {
                       <span className="tag">{appointment.id}</span>
                       <h3>{appointment.clientName}</h3>
                       <p>{bookedServices.map((service) => service.name).join(", ")}</p>
+                      <span className={`status-pill ${appointment.status}`}>{appointment.status}</span>
                     </div>
                     <div className="agenda-meta">
                       <strong>{formatLongDate(appointment.date)}</strong>
-                      <span>
-                        {appointment.startTime} ate {appointment.endTime}
-                      </span>
+                      <span>{appointment.startTime} ate {appointment.endTime}</span>
                       <small>{appointment.clientWhatsapp}</small>
                     </div>
                   </article>
@@ -596,45 +645,21 @@ function App() {
 
             <div className="whatsapp-grid">
               {appointments.slice().reverse().map((appointment) => {
-                const barber = barbers.find((item) => item.id === appointment.barberId);
-                const bookedServices = services.filter((service) =>
-                  appointment.serviceIds.includes(service.id)
-                );
-
-                const clientLink = buildWhatsAppLink(
-                  appointment.clientWhatsapp,
-                  [
-                    "Confirmacao de agendamento.",
-                    `Codigo: ${appointment.id}`,
-                    `Barbeiro: ${barber.name}`,
-                    `Horario: ${appointment.startTime}`,
-                    `Servicos: ${bookedServices.map((service) => service.name).join(", ")}`
-                  ].join("\n")
-                );
-
-                const barberLink = buildWhatsAppLink(
-                  barber.phone,
-                  [
-                    "Novo agendamento confirmado.",
-                    `Cliente: ${appointment.clientName}`,
-                    `Codigo: ${appointment.id}`,
-                    `Data: ${formatLongDate(appointment.date)}`,
-                    `Horario: ${appointment.startTime} ate ${appointment.endTime}`
-                  ].join("\n")
-                );
+                const hydrated = hydrateAppointmentView(appointment);
 
                 return (
                   <article key={appointment.id} className="whatsapp-card">
                     <div>
                       <span className="tag">{appointment.id}</span>
                       <h3>{appointment.clientName}</h3>
-                      <p>{barber.name}</p>
+                      <p>{hydrated.barber.name}</p>
+                      <span className={`status-pill ${appointment.status}`}>{appointment.status}</span>
                     </div>
                     <div className="actions-stack">
-                      <a className="primary-button" href={clientLink} target="_blank" rel="noreferrer">
+                      <a className="primary-button" href={hydrated.clientWhatsappLink} target="_blank" rel="noreferrer">
                         WhatsApp do cliente
                       </a>
-                      <a className="secondary-button" href={barberLink} target="_blank" rel="noreferrer">
+                      <a className="secondary-button" href={hydrated.barberWhatsappLink} target="_blank" rel="noreferrer">
                         WhatsApp do barbeiro
                       </a>
                     </div>
@@ -642,14 +667,111 @@ function App() {
                 );
               })}
             </div>
+          </section>
+        </section>
+      ) : null}
 
-            <div className="roadmap-box">
-              <strong>04 e 05. Supabase</strong>
-              <p>Schema SQL e client real prontos para usar com credenciais do projeto.</p>
-              <strong>06. Deploy Vercel</strong>
-              <p>Projeto compativel com deploy direto apos `npm run build` e com configuracao de SPA.</p>
-              <strong>07. Upgrades premium</strong>
-              <p>Planos mais caros podem incluir lembrete automatico, assinatura, recorrencia e relatorios.</p>
+      {activeView === "admin" ? (
+        <section className="layout-grid single-column">
+          <section className="glass-card">
+            <div className="section-head">
+              <div>
+                <span className="mini-badge">Painel 04</span>
+                <h2>Admin da operacao</h2>
+              </div>
+              <p>Gerencie a agenda, filtre a operacao e controle o status dos agendamentos.</p>
+            </div>
+
+            <div className="admin-stats">
+              <div className="metric-card">
+                <strong>{adminStats.total}</strong>
+                <span>Total de reservas</span>
+              </div>
+              <div className="metric-card">
+                <strong>{adminStats.confirmed}</strong>
+                <span>Confirmados</span>
+              </div>
+              <div className="metric-card">
+                <strong>{adminStats.cancelled}</strong>
+                <span>Cancelados</span>
+              </div>
+              <div className="metric-card">
+                <strong>{adminStats.today}</strong>
+                <span>Hoje</span>
+              </div>
+            </div>
+
+            <div className="admin-filters">
+              <label>
+                Barbeiro
+                <select value={adminBarberFilter} onChange={(event) => setAdminBarberFilter(event.target.value)}>
+                  <option value="all">Todos</option>
+                  {barbers.map((barber) => (
+                    <option key={barber.id} value={barber.id}>{barber.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Status
+                <select value={adminStatusFilter} onChange={(event) => setAdminStatusFilter(event.target.value)}>
+                  <option value="all">Todos</option>
+                  <option value="confirmed">Confirmado</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </label>
+              <label>
+                Data
+                <select value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)}>
+                  <option value="all">Todas</option>
+                  {dateOptions.map((date) => (
+                    <option key={date} value={date}>{formatDateLabel(date)}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="admin-list">
+              {adminAppointments.map((appointment) => {
+                const hydrated = hydrateAppointmentView(appointment);
+
+                return (
+                  <article key={appointment.id} className="admin-card">
+                    <div className="admin-card-main">
+                      <div className="admin-card-head">
+                        <span className="tag">{appointment.id}</span>
+                        <span className={`status-pill ${appointment.status}`}>{appointment.status}</span>
+                      </div>
+                      <h3>{appointment.clientName}</h3>
+                      <p>{hydrated.services.map((service) => service.name).join(", ")}</p>
+                      <div className="admin-card-meta">
+                        <span>{hydrated.barber.name}</span>
+                        <span>{formatLongDate(appointment.date)}</span>
+                        <span>{appointment.startTime} ate {appointment.endTime}</span>
+                        <span>{appointment.clientWhatsapp}</span>
+                      </div>
+                    </div>
+                    <div className="admin-card-actions">
+                      <button
+                        className="secondary-button"
+                        disabled={statusUpdateId === appointment.id || appointment.status === "confirmed"}
+                        onClick={() => handleStatusChange(appointment.id, "confirmed")}
+                      >
+                        {statusUpdateId === appointment.id ? "Atualizando..." : "Confirmar"}
+                      </button>
+                      <button
+                        className="secondary-button danger-button"
+                        disabled={statusUpdateId === appointment.id || appointment.status === "cancelled"}
+                        onClick={() => handleStatusChange(appointment.id, "cancelled")}
+                      >
+                        {statusUpdateId === appointment.id ? "Atualizando..." : "Cancelar"}
+                      </button>
+                      <a className="primary-button" href={hydrated.barberWhatsappLink} target="_blank" rel="noreferrer">
+                        Avisar barbeiro
+                      </a>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         </section>
