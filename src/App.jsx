@@ -7,6 +7,7 @@ import {
   createScheduleBlock,
   deleteScheduleBlock,
   getStoredSession,
+  saveService,
   updateAppointment,
   updateAppointmentStatus
 } from "./lib/api";
@@ -74,6 +75,9 @@ function App() {
   const [blockActionId, setBlockActionId] = useState("");
   const [editorForm, setEditorForm] = useState(null);
   const [isUpdatingAppointment, setIsUpdatingAppointment] = useState(false);
+  const [serviceEditorForm, setServiceEditorForm] = useState(null);
+  const [serviceFeedback, setServiceFeedback] = useState("");
+  const [isSavingService, setIsSavingService] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -638,6 +642,45 @@ function App() {
     });
   }
 
+  function createEmptyServiceDraft() {
+    return {
+      id: "",
+      name: "",
+      badge: "",
+      price: "",
+      duration: "",
+      category: "",
+      description: "",
+      isActive: true,
+      sortOrder: services.length + 1
+    };
+  }
+
+  function beginCreateService() {
+    setServiceEditorForm(createEmptyServiceDraft());
+    setServiceFeedback("");
+  }
+
+  function beginEditService(service) {
+    setServiceEditorForm({
+      id: service.id,
+      name: service.name,
+      badge: service.badge,
+      price: String(service.price),
+      duration: String(service.duration),
+      category: service.category,
+      description: service.description,
+      isActive: true,
+      sortOrder: services.findIndex((item) => item.id === service.id) + 1
+    });
+    setServiceFeedback("");
+  }
+
+  function cancelServiceEdit() {
+    setServiceEditorForm(null);
+    setServiceFeedback("");
+  }
+
   function cancelEditAppointment() {
     setEditorForm(null);
   }
@@ -668,6 +711,41 @@ function App() {
       window.alert(error.message || "Nao foi possivel salvar as alteracoes.");
     } finally {
       setIsUpdatingAppointment(false);
+    }
+  }
+
+  async function handleSaveService(event) {
+    event.preventDefault();
+
+    if (!session) {
+      setServiceFeedback("Faca login para editar o catalogo.");
+      return;
+    }
+
+    if (!serviceEditorForm?.name?.trim()) {
+      setServiceFeedback("Informe o nome do servico.");
+      return;
+    }
+
+    setIsSavingService(true);
+
+    try {
+      const existingService = services.find((service) => service.id === serviceEditorForm.id) ?? null;
+      const saved = await saveService(serviceEditorForm, existingService);
+      setServices((current) => {
+        const hasExisting = current.some((service) => service.id === saved.data.id);
+        const next = hasExisting
+          ? current.map((service) => (service.id === saved.data.id ? saved.data : service))
+          : [...current, saved.data];
+
+        return next.slice().sort((left, right) => left.name.localeCompare(right.name));
+      });
+      setServiceFeedback("Servico salvo com sucesso.");
+      beginEditService(saved.data);
+    } catch (error) {
+      setServiceFeedback(error.message || "Nao foi possivel salvar o servico.");
+    } finally {
+      setIsSavingService(false);
     }
   }
 
@@ -973,6 +1051,136 @@ function App() {
                     <span>{selectedPanelBarber.bio}</span>
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+
+            {session ? (
+              <div className="service-manager">
+                <div className="section-head compact">
+                  <div>
+                    <span className="mini-badge">Catalogo</span>
+                    <h2>Servicos e valores</h2>
+                  </div>
+                  <p>Barbeiros autenticados podem ajustar preco, descricao, duracao e cadastrar novos itens.</p>
+                </div>
+
+                <div className="service-manager-layout">
+                  <div className="service-list">
+                    {services.map((service) => (
+                      <button
+                        key={service.id}
+                        className={`service-card ${serviceEditorForm?.id === service.id ? "active" : ""}`}
+                        onClick={() => beginEditService(service)}
+                      >
+                        <span className="tag">{service.badge}</span>
+                        <div className="service-topline">
+                          <strong>{service.name}</strong>
+                          <span>{formatCurrency(service.price)}</span>
+                        </div>
+                        <small>{service.category}</small>
+                        <p>{service.description}</p>
+                        <em>{service.duration} min</em>
+                      </button>
+                    ))}
+                  </div>
+
+                  <form className="subsection-card service-editor" onSubmit={handleSaveService}>
+                    <div className="section-head compact">
+                      <div>
+                        <span className="mini-badge">Editor</span>
+                        <h2>{serviceEditorForm?.id ? "Atualizar servico" : "Novo servico"}</h2>
+                      </div>
+                    </div>
+
+                    <div className="form-grid">
+                      <label>
+                        Nome
+                        <input
+                          value={serviceEditorForm?.name ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), name: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Badge
+                        <input
+                          value={serviceEditorForm?.badge ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), badge: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Preco
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={serviceEditorForm?.price ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), price: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Duracao
+                        <input
+                          type="number"
+                          min="5"
+                          step="5"
+                          value={serviceEditorForm?.duration ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), duration: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Categoria
+                        <input
+                          value={serviceEditorForm?.category ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), category: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Ordem
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={serviceEditorForm?.sortOrder ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), sortOrder: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="full">
+                        Descricao
+                        <textarea
+                          value={serviceEditorForm?.description ?? ""}
+                          onChange={(event) =>
+                            setServiceEditorForm((current) => ({ ...(current ?? createEmptyServiceDraft()), description: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <div className="actions-row">
+                      <button className="primary-button" type="submit" disabled={isSavingService}>
+                        {isSavingService ? "Salvando..." : "Salvar servico"}
+                      </button>
+                      <button className="secondary-button" type="button" onClick={beginCreateService}>
+                        Novo servico
+                      </button>
+                      <button className="secondary-button" type="button" onClick={cancelServiceEdit}>
+                        Fechar
+                      </button>
+                    </div>
+                    {serviceFeedback ? <p className="feedback-line">{serviceFeedback}</p> : null}
+                  </form>
+                </div>
               </div>
             ) : null}
 

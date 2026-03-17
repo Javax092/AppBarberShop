@@ -169,6 +169,14 @@ create policy "public_read_services"
   to anon
   using (true);
 
+drop policy if exists "public_manage_services" on public.services;
+create policy "public_manage_services"
+  on public.services
+  for all
+  to anon
+  using (true)
+  with check (true);
+
 drop policy if exists "public_read_barbers" on public.barbers;
 create policy "public_read_barbers"
   on public.barbers

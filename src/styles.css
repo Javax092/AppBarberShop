@@ -603,7 +603,9 @@ a {
 }
 
 .finance-strip,
-.admin-columns {
+.admin-columns,
+.service-manager-layout,
+.service-list {
   display: grid;
   gap: 14px;
 }
@@ -642,6 +644,25 @@ a {
 .admin-columns {
   grid-template-columns: 0.92fr 1.08fr;
   margin-bottom: 18px;
+}
+
+.service-manager {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.service-manager-layout {
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: start;
+}
+
+.service-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.service-editor {
+  align-content: start;
 }
 
 .subsection-card {
@@ -827,6 +848,8 @@ a {
   .admin-filters,
   .finance-strip,
   .admin-columns,
+  .service-manager-layout,
+  .service-list,
   .tabbar {
     grid-template-columns: 1fr;
   }

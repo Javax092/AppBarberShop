@@ -19,6 +19,29 @@ function normalizeService(row) {
   };
 }
 
+function serializeService(service, existingService) {
+  return {
+    id:
+      existingService?.id ??
+      service.id?.trim() ??
+      service.name
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, ""),
+    name: service.name.trim(),
+    badge: service.badge?.trim() ?? "",
+    price: Number(service.price ?? 0),
+    duration: Number(service.duration ?? 0),
+    category: service.category?.trim() ?? "",
+    description: service.description?.trim() ?? "",
+    sort_order: Number(service.sortOrder ?? existingService?.sortOrder ?? 0),
+    is_active: service.isActive ?? true
+  };
+}
+
 function normalizeBarber(row) {
   return {
     id: row.id,
@@ -251,6 +274,32 @@ export async function createScheduleBlock(block, session) {
   return {
     source: "supabase",
     data: normalizeBlock(data)
+  };
+}
+
+export async function saveService(service, existingService = null) {
+  if (!isSupabaseConfigured()) {
+    return {
+      source: "local",
+      data: { ...service, id: existingService?.id ?? service.id ?? `service-${Date.now()}` }
+    };
+  }
+
+  const supabase = getSupabaseClient();
+  const payload = serializeService(service, existingService);
+  const query = existingService
+    ? supabase.from(SERVICES_TABLE).update(payload).eq("id", existingService.id)
+    : supabase.from(SERVICES_TABLE).insert(payload);
+
+  const { data, error } = await query.select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    source: "supabase",
+    data: normalizeService(data)
   };
 }
 
