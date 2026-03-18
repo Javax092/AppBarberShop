@@ -4,6 +4,9 @@ import logoMark from "../assets/logo-mark.svg";
 import heritagePortrait from "../assets/portrait-heritage.svg";
 import { formatCurrency } from "../utils/schedule";
 
+const customLogo = "/paitaon.png";
+const customSpotlightPortrait = "/paion2.png";
+
 const roleLabels = {
   client: "Cliente",
   barber: "Barbeiro",
@@ -42,7 +45,7 @@ export function AppHeader({
     <header className="hero-card">
       <div className="hero-copy">
         <div className="brand-lockup">
-          <img className="brand-logo" src={brandConfig.logoImageUrl || logoMark} alt={brandConfig.logoText} />
+          <img className="brand-logo" src={brandConfig.logoImageUrl || customLogo || logoMark} alt={brandConfig.logoText} />
           <div>
             <span className="eyebrow">Operacao publicada</span>
             <h1>{brandConfig.heroTitle || brandConfig.logoText}</h1>
@@ -72,7 +75,7 @@ export function AppHeader({
           <div className="spotlight-row">
             <img
               className="spotlight-portrait"
-              src={portraitMap[selectedBarber?.photoKey] ?? heritagePortrait}
+              src={customSpotlightPortrait || portraitMap[selectedBarber?.photoKey] || heritagePortrait}
               alt={selectedBarber?.name ?? "Profissional"}
             />
             <div>
