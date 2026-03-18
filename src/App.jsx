@@ -635,7 +635,7 @@ function App() {
     setStatusUpdateId(appointmentId);
 
     try {
-      await updateAppointmentStatus(appointmentId, nextStatus);
+      await updateAppointmentStatus(appointmentId, nextStatus, session);
       await refreshData(session);
       setEditorForm((current) =>
         current && current.id === appointmentId ? { ...current, status: nextStatus } : current
@@ -831,7 +831,7 @@ function App() {
 
     try {
       const existingService = managedServices.find((service) => service.id === serviceEditorForm.id) ?? null;
-      await saveService({ ...serviceEditorForm, barberId: managedBarberId }, existingService);
+      await saveService({ ...serviceEditorForm, barberId: managedBarberId }, existingService, session);
       setServiceFeedback("Servico salvo com sucesso.");
       await refreshData(session);
       setServiceEditorForm(createEmptyServiceDraft(managedBarberId));
@@ -847,7 +847,7 @@ function App() {
     setServiceFeedback("");
 
     try {
-      await setServiceActive(service.id, !service.isActive);
+      await setServiceActive(service.id, !service.isActive, session);
       setServiceFeedback(service.isActive ? "Servico retirado do catalogo." : "Servico reativado.");
       await refreshData(session);
       beginEditService({ ...service, isActive: !service.isActive });

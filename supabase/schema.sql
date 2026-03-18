@@ -1016,6 +1016,225 @@ begin
 end;
 $$;
 
+create or replace function public.update_appointment_status_app_user(
+  input_email text,
+  input_password text,
+  input_appointment_id text,
+  input_status text
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor record;
+  target_appointment public.appointments%rowtype;
+begin
+  select *
+  into actor
+  from public.authenticate_staff(input_email, input_password)
+  limit 1;
+
+  if actor.user_id is null then
+    raise exception 'Credenciais invalidas.';
+  end if;
+
+  if input_status not in ('confirmed', 'completed', 'cancelled') then
+    raise exception 'Status invalido.';
+  end if;
+
+  select *
+  into target_appointment
+  from public.appointments
+  where id = input_appointment_id;
+
+  if target_appointment.id is null then
+    raise exception 'Agendamento nao encontrado.';
+  end if;
+
+  if actor.role <> 'admin' and target_appointment.barber_id <> actor.barber_id then
+    raise exception 'Sem permissao para atualizar este agendamento.';
+  end if;
+
+  update public.appointments
+  set status = input_status
+  where id = input_appointment_id;
+
+  return input_appointment_id;
+end;
+$$;
+
+create or replace function public.save_barber_service_app_user(
+  input_email text,
+  input_password text,
+  input_service_id uuid,
+  input_barber_id text,
+  input_name text,
+  input_badge text,
+  input_price numeric,
+  input_duration integer,
+  input_category text,
+  input_description text,
+  input_sort_order integer,
+  input_is_active boolean
+)
+returns public.barber_services
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor record;
+  target_service public.barber_services%rowtype;
+  saved_service public.barber_services%rowtype;
+  resolved_slug text;
+  resolved_barber_id text;
+begin
+  select *
+  into actor
+  from public.authenticate_staff(input_email, input_password)
+  limit 1;
+
+  if actor.user_id is null then
+    raise exception 'Credenciais invalidas.';
+  end if;
+
+  if coalesce(trim(input_name), '') = '' then
+    raise exception 'Informe o nome do servico.';
+  end if;
+
+  if coalesce(input_duration, 0) <= 0 then
+    raise exception 'Duracao invalida.';
+  end if;
+
+  if coalesce(input_price, 0) < 0 then
+    raise exception 'Preco invalido.';
+  end if;
+
+  if input_service_id is not null then
+    select *
+    into target_service
+    from public.barber_services
+    where id = input_service_id;
+
+    if target_service.id is null then
+      raise exception 'Servico nao encontrado.';
+    end if;
+
+    if actor.role <> 'admin' and target_service.barber_id <> actor.barber_id then
+      raise exception 'Sem permissao para editar este servico.';
+    end if;
+
+    resolved_barber_id := target_service.barber_id;
+    resolved_slug := target_service.slug;
+
+    update public.barber_services
+    set
+      name = trim(input_name),
+      badge = coalesce(trim(input_badge), ''),
+      price = input_price,
+      duration = input_duration,
+      category = coalesce(trim(input_category), ''),
+      description = coalesce(trim(input_description), ''),
+      sort_order = coalesce(input_sort_order, target_service.sort_order),
+      is_active = coalesce(input_is_active, target_service.is_active)
+    where id = input_service_id
+    returning * into saved_service;
+  else
+    resolved_barber_id := input_barber_id;
+
+    if actor.role <> 'admin' and resolved_barber_id <> actor.barber_id then
+      raise exception 'Sem permissao para criar servico neste profissional.';
+    end if;
+
+    resolved_slug := regexp_replace(lower(trim(input_name)), '[^a-z0-9]+', '-', 'g');
+    resolved_slug := trim(both '-' from resolved_slug);
+
+    if resolved_slug = '' then
+      resolved_slug := 'servico-' || substr(md5(clock_timestamp()::text), 1, 8);
+    else
+      resolved_slug := resolved_slug || '-' || substr(md5(clock_timestamp()::text), 1, 6);
+    end if;
+
+    insert into public.barber_services (
+      barber_id,
+      slug,
+      name,
+      badge,
+      price,
+      duration,
+      category,
+      description,
+      sort_order,
+      is_active
+    )
+    values (
+      resolved_barber_id,
+      resolved_slug,
+      trim(input_name),
+      coalesce(trim(input_badge), ''),
+      input_price,
+      input_duration,
+      coalesce(trim(input_category), ''),
+      coalesce(trim(input_description), ''),
+      coalesce(input_sort_order, 0),
+      coalesce(input_is_active, true)
+    )
+    returning * into saved_service;
+  end if;
+
+  return saved_service;
+end;
+$$;
+
+create or replace function public.set_barber_service_active_app_user(
+  input_email text,
+  input_password text,
+  input_service_id uuid,
+  input_is_active boolean
+)
+returns public.barber_services
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor record;
+  target_service public.barber_services%rowtype;
+  saved_service public.barber_services%rowtype;
+begin
+  select *
+  into actor
+  from public.authenticate_staff(input_email, input_password)
+  limit 1;
+
+  if actor.user_id is null then
+    raise exception 'Credenciais invalidas.';
+  end if;
+
+  select *
+  into target_service
+  from public.barber_services
+  where id = input_service_id;
+
+  if target_service.id is null then
+    raise exception 'Servico nao encontrado.';
+  end if;
+
+  if actor.role <> 'admin' and target_service.barber_id <> actor.barber_id then
+    raise exception 'Sem permissao para alterar este servico.';
+  end if;
+
+  update public.barber_services
+  set is_active = input_is_active
+  where id = input_service_id
+  returning * into saved_service;
+
+  return saved_service;
+end;
+$$;
+
 create or replace function public.public_booking_snapshot()
 returns jsonb
 language sql
@@ -1119,6 +1338,9 @@ grant execute on function public.public_booking_snapshot() to anon, authenticate
 grant execute on function public.book_public_appointment(text, text, text, date, time, text, uuid[]) to anon, authenticated;
 grant execute on function public.save_staff_appointment(text, text, text, text, date, time, text, text, uuid[]) to authenticated;
 grant execute on function public.update_appointment_status(text, text) to authenticated;
+grant execute on function public.update_appointment_status_app_user(text, text, text, text) to anon, authenticated;
+grant execute on function public.save_barber_service_app_user(text, text, uuid, text, text, text, numeric, integer, text, text, integer, boolean) to anon, authenticated;
+grant execute on function public.set_barber_service_active_app_user(text, text, uuid, boolean) to anon, authenticated;
 grant execute on function public.log_app_event(text, text, text, text, jsonb) to anon, authenticated;
 
 alter table public.barbers enable row level security;

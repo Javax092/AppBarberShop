@@ -26,6 +26,32 @@ const SESSION_KEY = "appmobilebarbearia.local-session";
 const DEFAULT_BUSINESS_WHATSAPP = "5592986202729";
 const MEDIA_BUCKET = "opaitaon-media";
 
+function getStoredFallbackSession() {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.authMode === "app_users" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeFallbackSession(session) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
 function normalizeBarber(row) {
   return {
     id: row.id,
@@ -298,6 +324,45 @@ async function fetchStaffData() {
   };
 }
 
+async function fetchFallbackStaffData() {
+  const supabase = getSupabaseClient();
+  const [barbersResult, servicesResult, appointmentsResult, blocksResult, brandResult, galleryResult] = await Promise.all([
+    supabase.from(BARBERS_TABLE).select("*").eq("is_active", true).order("sort_order", { ascending: true }),
+    supabase.from(SERVICES_TABLE).select("*").order("sort_order", { ascending: true }),
+    supabase
+      .from("appointments")
+      .select(
+        "id, barber_id, customer_id, client_name, client_whatsapp, date, start_time, end_time, status, total_price, notes, created_at, updated_at, appointment_services(service_id, service_name, price, duration, sort_order)"
+      )
+      .order("date", { ascending: true })
+      .order("start_time", { ascending: true }),
+    supabase.from(BLOCKS_TABLE).select("*").order("date", { ascending: true }).order("start_time", { ascending: true }),
+    supabase.from(BRAND_TABLE).select("*").eq("id", 1).maybeSingle(),
+    supabase.from(GALLERY_TABLE).select("*").order("sort_order", { ascending: true })
+  ]);
+
+  const firstError = [barbersResult, servicesResult, appointmentsResult, blocksResult, brandResult, galleryResult].find(
+    (result) => result.error
+  )?.error;
+
+  if (firstError) {
+    throw firstError;
+  }
+
+  return {
+    barbers: barbersResult.data.map(normalizeBarber),
+    services: servicesResult.data.map(normalizeService),
+    appointments: appointmentsResult.data.map(normalizeAppointment),
+    scheduleBlocks: blocksResult.data.map(normalizeBlock),
+    customers: [],
+    notifications: [],
+    staffMembers: [],
+    logs: [],
+    brandConfig: normalizeBrandConfig(brandResult.data ?? {}),
+    galleryPosts: galleryResult.data.map(normalizeGalleryPost)
+  };
+}
+
 async function fetchPublicBrandAndGallery() {
   const supabase = getSupabaseClient();
   const [brandResult, galleryResult] = await Promise.all([
@@ -357,6 +422,15 @@ export async function bootstrapAppData(sessionProfile = null) {
   }
 
   if (sessionProfile) {
+    if (sessionProfile.authMode === "app_users") {
+      const staffData = await fetchFallbackStaffData();
+      return {
+        source: "supabase-app-users",
+        ...staffData,
+        bookingEvents: buildBookingEvents(staffData.appointments)
+      };
+    }
+
     const staffData = await fetchStaffData();
     return {
       source: "supabase",
@@ -402,6 +476,11 @@ export async function bootstrapAppData(sessionProfile = null) {
 }
 
 export async function getCurrentSessionProfile() {
+  const fallbackSession = getStoredFallbackSession();
+  if (fallbackSession) {
+    return fallbackSession;
+  }
+
   if (!isSupabaseConfigured()) {
     const raw = localStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -421,16 +500,51 @@ export async function authenticateStaff(email, password) {
   }
 
   const supabase = getSupabaseClient();
+  const trimmedEmail = email.trim();
+
   const { error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
+    email: trimmedEmail,
     password
   });
 
-  if (error) {
+  if (!error) {
+    return getProfileForCurrentUser();
+  }
+
+  const shouldFallbackToAppUsers =
+    error.message?.includes("Database error querying schema") ||
+    error.error_code === "unexpected_failure";
+
+  if (!shouldFallbackToAppUsers) {
     throw error;
   }
 
-  return getProfileForCurrentUser();
+  const { data, error: fallbackError } = await supabase.rpc("authenticate_staff", {
+    input_email: trimmedEmail,
+    input_password: password
+  });
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+
+  const profile = Array.isArray(data) ? data[0] : data;
+  if (!profile?.user_id) {
+    throw new Error("Nao foi possivel autenticar com as credenciais informadas.");
+  }
+
+  const fallbackSession = {
+    userId: profile.user_id,
+    email: profile.email,
+    fullName: profile.full_name,
+    role: profile.role,
+    barberId: profile.barber_id,
+    authMode: "app_users",
+    fallbackSecret: password
+  };
+
+  storeFallbackSession(fallbackSession);
+  return fallbackSession;
 }
 
 export async function requestPasswordReset(email) {
@@ -470,8 +584,17 @@ export async function updateOwnPassword(password) {
 }
 
 export async function clearStoredSession() {
-  if (!isSupabaseConfigured()) {
+  const fallbackSession = getStoredFallbackSession();
+
+  if (typeof localStorage !== "undefined") {
     localStorage.removeItem(SESSION_KEY);
+  }
+
+  if (fallbackSession) {
+    return;
+  }
+
+  if (!isSupabaseConfigured()) {
     return;
   }
 
@@ -543,7 +666,7 @@ export async function saveStaffAppointment(appointment) {
   };
 }
 
-export async function updateAppointmentStatus(appointmentId, status) {
+export async function updateAppointmentStatus(appointmentId, status, sessionProfile = null) {
   if (!isSupabaseConfigured()) {
     return {
       source: "local",
@@ -552,6 +675,24 @@ export async function updateAppointmentStatus(appointmentId, status) {
   }
 
   const supabase = getSupabaseClient();
+  if (sessionProfile?.authMode === "app_users") {
+    const { data, error } = await supabase.rpc("update_appointment_status_app_user", {
+      input_email: sessionProfile.email,
+      input_password: sessionProfile.fallbackSecret,
+      input_appointment_id: appointmentId,
+      input_status: status
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      source: "supabase-app-users",
+      id: data
+    };
+  }
+
   const { data, error } = await supabase.rpc("update_appointment_status", {
     input_appointment_id: appointmentId,
     input_status: status
@@ -623,7 +764,7 @@ export async function deleteScheduleBlock(blockId) {
   };
 }
 
-export async function saveService(service, existingService = null) {
+export async function saveService(service, existingService = null, sessionProfile = null) {
   if (!isSupabaseConfigured()) {
     return {
       source: "local",
@@ -635,6 +776,32 @@ export async function saveService(service, existingService = null) {
   }
 
   const supabase = getSupabaseClient();
+  if (sessionProfile?.authMode === "app_users") {
+    const { data, error } = await supabase.rpc("save_barber_service_app_user", {
+      input_email: sessionProfile.email,
+      input_password: sessionProfile.fallbackSecret,
+      input_service_id: existingService?.id ?? null,
+      input_barber_id: service.barberId,
+      input_name: service.name.trim(),
+      input_badge: service.badge?.trim() ?? "",
+      input_price: Number(service.price ?? 0),
+      input_duration: Number(service.duration ?? 0),
+      input_category: service.category?.trim() ?? "",
+      input_description: service.description?.trim() ?? "",
+      input_sort_order: Number(service.sortOrder ?? existingService?.sortOrder ?? 0),
+      input_is_active: service.isActive ?? true
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      source: "supabase-app-users",
+      data: normalizeService(data)
+    };
+  }
+
   const payload = {
     barber_id: service.barberId,
     slug:
@@ -673,7 +840,7 @@ export async function saveService(service, existingService = null) {
   };
 }
 
-export async function setServiceActive(serviceId, isActive) {
+export async function setServiceActive(serviceId, isActive, sessionProfile = null) {
   if (!isSupabaseConfigured()) {
     return {
       source: "local",
@@ -682,6 +849,24 @@ export async function setServiceActive(serviceId, isActive) {
   }
 
   const supabase = getSupabaseClient();
+  if (sessionProfile?.authMode === "app_users") {
+    const { data, error } = await supabase.rpc("set_barber_service_active_app_user", {
+      input_email: sessionProfile.email,
+      input_password: sessionProfile.fallbackSecret,
+      input_service_id: serviceId,
+      input_is_active: isActive
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      source: "supabase-app-users",
+      data: normalizeService(data)
+    };
+  }
+
   const { data, error } = await supabase
     .from(SERVICES_TABLE)
     .update({ is_active: isActive })
