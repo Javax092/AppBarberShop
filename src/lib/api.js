@@ -281,7 +281,7 @@ async function fetchStaffData() {
     supabase
       .from("appointments")
       .select(
-        "id, barber_id, customer_id, client_name, client_whatsapp, date, start_time, end_time, status, total_price, notes, created_at, updated_at, appointment_services(service_id, services(id, name, price, duration, sort_order))"
+        "id, barber_id, client_name, client_whatsapp, date, start_time, end_time, status, total_price, notes, created_at, updated_at, appointment_services(service_id, services(id, name, price, duration, sort_order))"
       )
       .order("date", { ascending: true })
       .order("start_time", { ascending: true }),
@@ -333,7 +333,7 @@ async function fetchFallbackStaffData() {
     supabase
       .from("appointments")
       .select(
-        "id, barber_id, customer_id, client_name, client_whatsapp, date, start_time, end_time, status, total_price, notes, created_at, updated_at, appointment_services(service_id, services(id, name, price, duration, sort_order))"
+        "id, barber_id, client_name, client_whatsapp, date, start_time, end_time, status, total_price, notes, created_at, updated_at, appointment_services(service_id, services(id, name, price, duration, sort_order))"
       )
       .order("date", { ascending: true })
       .order("start_time", { ascending: true }),
