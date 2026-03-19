@@ -9,6 +9,7 @@ import {
   normalizeWhatsapp
 } from "../utils/schedule";
 import { getBookingProgress, getBookingStatusMessage, getRecommendedSlots } from "../utils/booking";
+import { buildBookingMomentLabel, enrichSlotsWithHeatmap } from "../utils/experience";
 
 export function useBooking({ barbers, services, appointments, bookingEvents, scheduleBlocks, session, refreshData, hydrateAppointmentView }) {
   const [selectedBarberId, setSelectedBarberId] = useState("");
@@ -70,13 +71,15 @@ export function useBooking({ barbers, services, appointments, bookingEvents, sch
       return [];
     }
 
-    return generateTimeSlots({
-      barber: selectedBarber,
-      date: selectedDate,
-      totalDuration: totals.totalDuration,
-      appointments: bookingSchedule,
-      scheduleBlocks
-    });
+    return enrichSlotsWithHeatmap(
+      generateTimeSlots({
+        barber: selectedBarber,
+        date: selectedDate,
+        totalDuration: totals.totalDuration,
+        appointments: bookingSchedule,
+        scheduleBlocks
+      })
+    );
   }, [bookingSchedule, scheduleBlocks, selectedBarber, selectedDate, selectedServices.length, totals.totalDuration]);
 
   const summaryServices = selectedServices.map((service) => service.name).join(", ");
@@ -94,6 +97,17 @@ export function useBooking({ barbers, services, appointments, bookingEvents, sch
   const recommendedSlots = useMemo(
     () => getRecommendedSlots(availableSlots, selectedTime),
     [availableSlots, selectedTime]
+  );
+  const bookingMomentLabel = useMemo(
+    () =>
+      buildBookingMomentLabel({
+        clientName,
+        barberName: selectedBarber?.name,
+        selectedTime,
+        selectedDate,
+        summaryServices
+      }),
+    [clientName, selectedBarber?.name, selectedDate, selectedTime, summaryServices]
   );
 
   function validateBookingForm() {
@@ -150,6 +164,12 @@ export function useBooking({ barbers, services, appointments, bookingEvents, sch
     if (error) {
       window.alert(error);
       return;
+    }
+
+    const selectedSlot = availableSlots.find((slot) => slot.value === selectedTime);
+    if (!selectedSlot || selectedSlot.disabled) {
+      window.alert("Esse horario acabou de ficar indisponivel. Escolha outro slot para evitar conflito.");
+      return { ok: false };
     }
 
     setIsSaving(true);
@@ -215,6 +235,7 @@ export function useBooking({ barbers, services, appointments, bookingEvents, sch
     summaryServices,
     bookingProgress,
     bookingStatusMessage,
+    bookingMomentLabel,
     isBookingReady,
     isSaving,
     normalizeBookingWhatsapp: normalizeWhatsapp,

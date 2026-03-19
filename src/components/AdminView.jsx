@@ -1,9 +1,16 @@
 import { formatCurrency, formatDateLabel, formatLongDate } from "../utils/schedule";
+import { formatProjectionCurrency, getFavoriteServices, getLoyaltyProfile } from "../utils/experience";
 
 export function AdminView({
   adminStats,
   occupancyStats,
+  occupancyHeatmap,
+  revenueProjection,
   customers,
+  reactivationCandidates,
+  scheduleConflicts,
+  weeklyDemandNarrative,
+  realtimeStatusLabel,
   customerDrafts,
   onCustomerDraftChange,
   onSaveCustomerNotes,
@@ -94,6 +101,12 @@ export function AdminView({
           </div>
         </div>
 
+        <div className="ops-banner">
+          <span className="mini-badge">Ao vivo</span>
+          <strong>{realtimeStatusLabel}</strong>
+          <p>{weeklyDemandNarrative}</p>
+        </div>
+
         <div className="finance-strip">
           <div className="finance-card">
             <span>Receita do dia</span>
@@ -111,6 +124,88 @@ export function AdminView({
             <span>Lider em receita</span>
             <strong>{adminStats.topBarber?.barber?.name || "-"}</strong>
           </div>
+        </div>
+
+        <div className="finance-strip projection-strip">
+          <div className="finance-card">
+            <span>Projecao de receita</span>
+            <strong>{formatProjectionCurrency(revenueProjection.projectedRevenue)}</strong>
+          </div>
+          <div className="finance-card">
+            <span>Pipeline confirmado</span>
+            <strong>{formatProjectionCurrency(revenueProjection.pipelineRevenue)}</strong>
+          </div>
+          <div className="finance-card">
+            <span>Ticket projetado</span>
+            <strong>{formatProjectionCurrency(revenueProjection.projectedTicket)}</strong>
+          </div>
+          <div className="finance-card">
+            <span>Conflitos detectados</span>
+            <strong>{scheduleConflicts.length}</strong>
+          </div>
+        </div>
+
+        <div className="admin-columns">
+          <section className="subsection-card">
+            <div className="section-head compact">
+              <div>
+                <span className="mini-badge">Heatmap</span>
+                <h2>Ocupacao da semana</h2>
+              </div>
+              <p>Leitura rapida de janelas fortes e fracas por profissional.</p>
+            </div>
+
+            <div className="occupancy-heatmap">
+              {occupancyHeatmap.map((row) => (
+                <div key={row.barberId} className="occupancy-row">
+                  <strong>{row.barberName}</strong>
+                  <div className="occupancy-cells">
+                    {row.cells.map((cell) => (
+                      <div
+                        key={`${row.barberId}-${cell.date}`}
+                        className={`occupancy-cell occupancy-${cell.heat}`}
+                        title={`${cell.label} • ${cell.tooltip}`}
+                      >
+                        <span>{cell.label.split(",")[0]}</span>
+                        <strong>{Math.round(cell.occupancyRate)}%</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="subsection-card">
+            <div className="section-head compact">
+              <div>
+                <span className="mini-badge">Conflitos</span>
+                <h2>Operacao sem atrito</h2>
+              </div>
+              <p>Duplo encaixe e sobreposicao aparecem antes de virarem problema.</p>
+            </div>
+
+            {scheduleConflicts.length ? (
+              <div className="block-list">
+                {scheduleConflicts.map((conflict) => (
+                  <article key={conflict.id} className="block-card conflict-card">
+                    <div>
+                      <span className="tag">Conflito</span>
+                      <strong>{formatLongDate(conflict.date)}</strong>
+                      <p>
+                        {conflict.appointments[0].clientName} x {conflict.appointments[1].clientName}
+                      </p>
+                      <small>
+                        {conflict.appointments[0].startTime} ate {conflict.appointments[1].endTime}
+                      </small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="notice-box">Nenhum conflito ativo na agenda.</div>
+            )}
+          </section>
         </div>
 
         <div className="admin-columns">
@@ -543,42 +638,68 @@ export function AdminView({
           <p>Historico, frequencia, ticket medio, ultimo atendimento e observacoes internas.</p>
         </div>
 
-        <div className="customer-grid">
-          {customers.map((customer) => (
-            <article key={customer.id} className="customer-card">
-              <div className="customer-topline">
-                <div>
-                  <strong>{customer.fullName}</strong>
-                  <span>{customer.whatsapp}</span>
+        {reactivationCandidates.length ? (
+          <div className="reactivation-strip">
+            {reactivationCandidates.map((candidate) => (
+              <article key={candidate.id} className="reactivation-card">
+                <span className="tag">{candidate.segment}</span>
+                <strong>{candidate.fullName}</strong>
+                <p>{candidate.favoriteServices}</p>
+                <div className="actions-row">
+                  <a className="secondary-button compact-button" href={candidate.whatsappLink} target="_blank" rel="noreferrer">
+                    Reativar cliente
+                  </a>
+                  <a className="secondary-button compact-button" href={candidate.businessWhatsappLink} target="_blank" rel="noreferrer">
+                    Abrir no comercial
+                  </a>
                 </div>
-                <span className="tag">{customer.visitCount} visitas</span>
-              </div>
-              <div className="customer-metrics">
-                <span>Ticket medio: {formatCurrency(customer.averageTicket)}</span>
-                <span>Lifetime: {formatCurrency(customer.lifetimeValue)}</span>
-                <span>Cadencia: {customer.cadenceDays.toFixed(0)} dias</span>
-                <span>
-                  Ultimo atendimento:{" "}
-                  {customer.lastAppointmentAt
-                    ? new Date(customer.lastAppointmentAt).toLocaleDateString("pt-BR")
-                    : "-"}
-                </span>
-              </div>
-              <p>{customer.lastServiceNames.join(", ") || "Sem servicos recentes"}</p>
-              <textarea
-                value={customerDrafts[customer.id] ?? customer.notes}
-                onChange={(event) => onCustomerDraftChange(customer.id, event.target.value)}
-                placeholder="Observacoes internas"
-              />
-              <button
-                className="secondary-button compact-button"
-                onClick={() => onSaveCustomerNotes(customer)}
-                disabled={customerActionId === customer.id}
-              >
-                {customerActionId === customer.id ? "Salvando..." : "Salvar observacao"}
-              </button>
-            </article>
-          ))}
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="customer-grid">
+          {customers.map((customer) => {
+            const loyalty = getLoyaltyProfile(customer);
+
+            return (
+              <article key={customer.id} className={`customer-card loyalty-${loyalty.tier}`}>
+                <div className="customer-topline">
+                  <div>
+                    <strong>{customer.fullName}</strong>
+                    <span>{customer.whatsapp}</span>
+                  </div>
+                  <span className={`tag loyalty-badge loyalty-badge-${loyalty.tier}`}>{loyalty.label}</span>
+                </div>
+                <div className="customer-metrics">
+                  <span>Score: {loyalty.score}</span>
+                  <span>Ticket medio: {formatCurrency(customer.averageTicket)}</span>
+                  <span>Lifetime: {formatCurrency(customer.lifetimeValue)}</span>
+                  <span>Cadencia: {customer.cadenceDays.toFixed(0)} dias</span>
+                  <span>
+                    Ultimo atendimento:{" "}
+                    {customer.lastAppointmentAt
+                      ? new Date(customer.lastAppointmentAt).toLocaleDateString("pt-BR")
+                      : "-"}
+                  </span>
+                </div>
+                <p>{loyalty.tone}</p>
+                <p>Favoritos: {getFavoriteServices(customer)}</p>
+                <textarea
+                  value={customerDrafts[customer.id] ?? customer.notes}
+                  onChange={(event) => onCustomerDraftChange(customer.id, event.target.value)}
+                  placeholder="Observacoes internas"
+                />
+                <button
+                  className="secondary-button compact-button"
+                  onClick={() => onSaveCustomerNotes(customer)}
+                  disabled={customerActionId === customer.id}
+                >
+                  {customerActionId === customer.id ? "Salvando..." : "Salvar observacao"}
+                </button>
+              </article>
+            );
+          })}
         </div>
 
         <div className="admin-filters">

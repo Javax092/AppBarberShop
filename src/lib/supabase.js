@@ -66,3 +66,31 @@ export function subscribeToAuthChanges(callback) {
     subscription.unsubscribe();
   };
 }
+
+export function subscribeToRealtimeTables(tables, callback) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase || !Array.isArray(tables) || !tables.length) {
+    return () => {};
+  }
+
+  const channel = supabase.channel("app-live-updates");
+
+  tables.forEach((table) => {
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table
+      },
+      callback
+    );
+  });
+
+  channel.subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}

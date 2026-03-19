@@ -1,19 +1,79 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AdminView } from "./components/AdminView";
+import { AnimatePresence, motion } from "framer-motion";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
-import { AutomationsView } from "./components/AutomationsView";
 import { BookingView } from "./components/BookingView";
 import { GalleryStrip } from "./components/GalleryStrip";
-import { PanelView } from "./components/PanelView";
 import { TabBar } from "./components/TabBar";
-import { WhatsappView } from "./components/WhatsappView";
 import { bootstrapAppData, getCurrentSessionProfile, logAppEvent } from "./lib/api";
 import { dateOptions, emptyBrandConfig } from "./app/constants";
+import { isSupabaseConfigured, subscribeToRealtimeTables } from "./lib/supabase";
 import { buildWhatsAppLink } from "./utils/schedule";
 import { useBooking } from "./hooks/useBooking";
 import { useStaffPanel } from "./hooks/useStaffPanel";
 import { useAdminDashboard } from "./hooks/useAdminDashboard";
 import { useAuthControls } from "./hooks/useAuthControls";
+import { buildRealtimeStatusLabel } from "./utils/experience";
+
+const THEME_STORAGE_KEY = "appmobilebarbearia.theme-mode";
+const PanelView = lazy(() => import("./components/PanelView").then((module) => ({ default: module.PanelView })));
+const AutomationsView = lazy(() =>
+  import("./components/AutomationsView").then((module) => ({ default: module.AutomationsView }))
+);
+const WhatsappView = lazy(() =>
+  import("./components/WhatsappView").then((module) => ({ default: module.WhatsappView }))
+);
+const AdminView = lazy(() => import("./components/AdminView").then((module) => ({ default: module.AdminView })));
+
+function hexToRgb(value) {
+  const normalized = value.replace("#", "");
+  const full = normalized.length === 3
+    ? normalized
+        .split("")
+        .map((item) => `${item}${item}`)
+        .join("")
+    : normalized;
+
+  const int = Number.parseInt(full, 16);
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255
+  };
+}
+
+function rgbaFromHex(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function AppSkeleton() {
+  return (
+    <div className="app-shell">
+      <div className="glass-card loading-card skeleton-shell">
+        <div className="skeleton-line skeleton-line-lg" />
+        <div className="skeleton-line skeleton-line-md" />
+        <div className="skeleton-grid">
+          <div className="skeleton-block" />
+          <div className="skeleton-block" />
+          <div className="skeleton-block" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ViewSkeleton() {
+  return (
+    <div className="glass-card loading-card skeleton-shell">
+      <div className="skeleton-line skeleton-line-lg" />
+      <div className="skeleton-line skeleton-line-md" />
+      <div className="skeleton-grid">
+        <div className="skeleton-block" />
+        <div className="skeleton-block" />
+      </div>
+    </div>
+  );
+}
 
 function getAppointmentServiceList(appointment, services) {
   if (appointment.services?.length) {
@@ -48,6 +108,16 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [session, setSession] = useState(null);
+  const [themeMode, setThemeMode] = useState(() => {
+    if (typeof localStorage === "undefined") {
+      return "dark";
+    }
+
+    return localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+  });
+  const [liveEvents, setLiveEvents] = useState(0);
+  const [lastRealtimeSyncAt, setLastRealtimeSyncAt] = useState(null);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
 
   const refreshData = useCallback(async (sessionProfileOverride) => {
     setIsLoading(true);
@@ -204,6 +274,62 @@ function App() {
     }
   }, [activeView, admin.tabs]);
 
+  useEffect(() => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    }
+  }, [themeMode]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = "#c69137";
+    const accentStrong = "#f0c472";
+    const support = "#81b0a5";
+
+    root.dataset.theme = themeMode;
+    root.style.setProperty("--brand-accent", accent);
+    root.style.setProperty("--brand-accent-soft", rgbaFromHex(accent, themeMode === "dark" ? 0.18 : 0.12));
+    root.style.setProperty("--brand-accent-strong", accentStrong);
+    root.style.setProperty("--brand-support", support);
+    root.style.setProperty("--brand-support-soft", rgbaFromHex(support, themeMode === "dark" ? 0.18 : 0.14));
+  }, [brandConfig, themeMode]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    if (!installPromptEvent) {
+      return;
+    }
+
+    await installPromptEvent.prompt();
+    setInstallPromptEvent(null);
+  }, [installPromptEvent]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      return () => {};
+    }
+
+    const syncLiveData = async () => {
+      await refreshData(session);
+      setLiveEvents((current) => current + 1);
+      setLastRealtimeSyncAt(new Date());
+    };
+
+    return subscribeToRealtimeTables(
+      ["appointments", "schedule_blocks", "appointment_notifications", "customers"],
+      syncLiveData
+    );
+  }, [refreshData, session]);
+
   const bookingViewProps = useMemo(
     () => ({
       barbers,
@@ -248,20 +374,18 @@ function App() {
       confirmation: booking.confirmation,
       bookingProgress: booking.bookingProgress,
       bookingStatusMessage: booking.bookingStatusMessage,
+      bookingMomentLabel: booking.bookingMomentLabel,
       isBookingReady: booking.isBookingReady
     }),
     [barbers, booking, isLoading]
   );
 
+  if (isLoading && (!barbers.length || !services.length)) {
+    return <AppSkeleton />;
+  }
+
   if (!barbers.length || !services.length) {
-    return (
-      <div className="app-shell">
-        <div className="glass-card loading-card">
-          <h2>Preparando a operacao</h2>
-          <p>{loadError || "Carregando agenda, equipe, catalogos e automacoes."}</p>
-        </div>
-      </div>
-    );
+    return <AppSkeleton />;
   }
 
   return (
@@ -288,178 +412,210 @@ function App() {
         adminStats={admin.adminStats}
         queuedNotifications={admin.queuedNotifications}
         brandConfig={brandConfig}
+        themeMode={themeMode}
+        onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
+        canInstallApp={Boolean(installPromptEvent)}
+        onInstallApp={handleInstallApp}
       />
 
       {loadError ? <div className="infra-banner error">{loadError}</div> : null}
+      <div className="infra-banner">
+        <span>Realtime</span>
+        <strong>{buildRealtimeStatusLabel(lastRealtimeSyncAt, liveEvents)}</strong>
+      </div>
 
       <GalleryStrip galleryPosts={galleryPosts} />
       <TabBar tabs={admin.tabs} activeView={activeView} onChange={setActiveView} />
 
-      {activeView === "booking" ? <BookingView {...bookingViewProps} /> : null}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeView}
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -18 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+        >
+          {activeView === "booking" ? <BookingView {...bookingViewProps} /> : null}
 
-      {activeView === "panel" ? (
-        <PanelView
-          session={session}
-          barbers={barbers}
-          selectedPanelBarberId={staffPanel.selectedPanelBarberId}
-          onSelectPanelBarber={staffPanel.setSelectedPanelBarberId}
-          selectedPanelBarber={staffPanel.selectedPanelBarber}
-          managedServices={staffPanel.managedServices}
-          serviceEditorForm={staffPanel.serviceEditorForm}
-          onBeginEditService={staffPanel.beginEditService}
-          onServiceEditorChange={(field, value) =>
-            staffPanel.setServiceEditorForm((current) => ({
-              ...(current ?? staffPanel.createEmptyServiceDraft()),
-              [field]: value
-            }))
-          }
-          onSaveService={staffPanel.handleSaveService}
-          isSavingService={staffPanel.isSavingService}
-          serviceActionId={staffPanel.serviceActionId}
-          onToggleServiceActive={staffPanel.handleToggleServiceActive}
-          onDeleteService={staffPanel.handleDeleteService}
-          onBeginCreateService={() => staffPanel.setServiceEditorForm(staffPanel.createEmptyServiceDraft())}
-          serviceFeedback={staffPanel.serviceFeedback}
-          panelAppointments={staffPanel.panelAppointments}
-          hydrateAppointmentView={hydrateAppointmentView}
-          onStatusChange={staffPanel.handleStatusChange}
-          statusUpdateId={staffPanel.statusUpdateId}
-          getAppointmentServiceList={(appointment) => getAppointmentServiceList(appointment, services)}
-        />
-      ) : null}
+          {activeView === "panel" ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <PanelView
+                session={session}
+                barbers={barbers}
+                selectedPanelBarberId={staffPanel.selectedPanelBarberId}
+                onSelectPanelBarber={staffPanel.setSelectedPanelBarberId}
+                selectedPanelBarber={staffPanel.selectedPanelBarber}
+                managedServices={staffPanel.managedServices}
+                serviceEditorForm={staffPanel.serviceEditorForm}
+                onBeginEditService={staffPanel.beginEditService}
+                onServiceEditorChange={(field, value) =>
+                  staffPanel.setServiceEditorForm((current) => ({
+                    ...(current ?? staffPanel.createEmptyServiceDraft()),
+                    [field]: value
+                  }))
+                }
+                onSaveService={staffPanel.handleSaveService}
+                isSavingService={staffPanel.isSavingService}
+                serviceActionId={staffPanel.serviceActionId}
+                onToggleServiceActive={staffPanel.handleToggleServiceActive}
+                onDeleteService={staffPanel.handleDeleteService}
+                onBeginCreateService={() => staffPanel.setServiceEditorForm(staffPanel.createEmptyServiceDraft())}
+                serviceFeedback={staffPanel.serviceFeedback}
+                panelAppointments={staffPanel.panelAppointments}
+                hydrateAppointmentView={hydrateAppointmentView}
+                onStatusChange={staffPanel.handleStatusChange}
+                statusUpdateId={staffPanel.statusUpdateId}
+                getAppointmentServiceList={(appointment) => getAppointmentServiceList(appointment, services)}
+              />
+            </Suspense>
+          ) : null}
 
-      {activeView === "automations" ? (
-        <AutomationsView
-          visibleNotifications={admin.visibleNotifications}
-          brandConfig={brandConfig}
-          onProcessQueue={admin.handleProcessQueue}
-          isProcessingQueue={admin.isProcessingQueue}
-          queueFeedback={admin.queueFeedback}
-        />
-      ) : null}
+          {activeView === "automations" ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <AutomationsView
+                visibleNotifications={admin.visibleNotifications}
+                brandConfig={brandConfig}
+                onProcessQueue={admin.handleProcessQueue}
+                isProcessingQueue={admin.isProcessingQueue}
+                queueFeedback={admin.queueFeedback}
+              />
+            </Suspense>
+          ) : null}
 
-      {activeView === "whatsapp" ? (
-        <WhatsappView
-          visibleWhatsappAppointments={admin.visibleWhatsappAppointments}
-          hydrateAppointmentView={hydrateAppointmentView}
-        />
-      ) : null}
+          {activeView === "whatsapp" ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <WhatsappView
+                visibleWhatsappAppointments={admin.visibleWhatsappAppointments}
+                hydrateAppointmentView={hydrateAppointmentView}
+              />
+            </Suspense>
+          ) : null}
 
-      {activeView === "admin" ? (
-        <AdminView
-          adminStats={admin.adminStats}
-          occupancyStats={admin.occupancyStats}
-          customers={customers}
-          customerDrafts={admin.customerDrafts}
-          onCustomerDraftChange={(customerId, value) =>
-            admin.setCustomerDrafts((current) => ({ ...current, [customerId]: value }))
-          }
-          onSaveCustomerNotes={admin.handleSaveCustomerNotes}
-          customerActionId={admin.customerActionId}
-          blockForm={admin.blockForm}
-          onBlockFormChange={(field, value) => admin.setBlockForm((current) => ({ ...current, [field]: value }))}
-          onCreateBlock={admin.handleCreateBlock}
-          blockFeedback={admin.blockFeedback}
-          barbers={barbers}
-          scheduleBlocks={scheduleBlocks}
-          blockActionId={admin.blockActionId}
-          onDeleteBlock={admin.handleDeleteBlock}
-          editorForm={staffPanel.editorForm}
-          onEditorChange={(field, value) =>
-            staffPanel.setEditorForm((current) => {
-              if (!current) {
-                return current;
-              }
+          {activeView === "admin" ? (
+            <Suspense fallback={<ViewSkeleton />}>
+              <AdminView
+                adminStats={admin.adminStats}
+                occupancyStats={admin.occupancyStats}
+                occupancyHeatmap={admin.occupancyHeatmap}
+                revenueProjection={admin.revenueProjection}
+                reactivationCandidates={admin.reactivationCandidates}
+                scheduleConflicts={admin.scheduleConflicts}
+                weeklyDemandNarrative={admin.weeklyDemandNarrative}
+                realtimeStatusLabel={buildRealtimeStatusLabel(lastRealtimeSyncAt, liveEvents)}
+                customers={customers}
+                customerDrafts={admin.customerDrafts}
+                onCustomerDraftChange={(customerId, value) =>
+                  admin.setCustomerDrafts((current) => ({ ...current, [customerId]: value }))
+                }
+                onSaveCustomerNotes={admin.handleSaveCustomerNotes}
+                customerActionId={admin.customerActionId}
+                blockForm={admin.blockForm}
+                onBlockFormChange={(field, value) => admin.setBlockForm((current) => ({ ...current, [field]: value }))}
+                onCreateBlock={admin.handleCreateBlock}
+                blockFeedback={admin.blockFeedback}
+                barbers={barbers}
+                scheduleBlocks={scheduleBlocks}
+                blockActionId={admin.blockActionId}
+                onDeleteBlock={admin.handleDeleteBlock}
+                editorForm={staffPanel.editorForm}
+                onEditorChange={(field, value) =>
+                  staffPanel.setEditorForm((current) => {
+                    if (!current) {
+                      return current;
+                    }
 
-              if (field === "barberId") {
-                return { ...current, barberId: value, serviceIds: [], startTime: "" };
-              }
+                    if (field === "barberId") {
+                      return { ...current, barberId: value, serviceIds: [], startTime: "" };
+                    }
 
-              if (field === "date") {
-                return { ...current, date: value, startTime: "" };
-              }
+                    if (field === "date") {
+                      return { ...current, date: value, startTime: "" };
+                    }
 
-              return { ...current, [field]: value };
-            })
-          }
-          editorAvailableSlots={staffPanel.editorAvailableSlots}
-          editorServicesCatalog={staffPanel.editorServicesCatalog}
-          onToggleEditorService={(serviceId) =>
-            staffPanel.setEditorForm((current) => {
-              if (!current) {
-                return current;
-              }
+                    return { ...current, [field]: value };
+                  })
+                }
+                editorAvailableSlots={staffPanel.editorAvailableSlots}
+                editorServicesCatalog={staffPanel.editorServicesCatalog}
+                onToggleEditorService={(serviceId) =>
+                  staffPanel.setEditorForm((current) => {
+                    if (!current) {
+                      return current;
+                    }
 
-              const nextIds = current.serviceIds.includes(serviceId)
-                ? current.serviceIds.filter((id) => id !== serviceId)
-                : [...current.serviceIds, serviceId];
+                    const nextIds = current.serviceIds.includes(serviceId)
+                      ? current.serviceIds.filter((id) => id !== serviceId)
+                      : [...current.serviceIds, serviceId];
 
-              return { ...current, serviceIds: nextIds, startTime: "" };
-            })
-          }
-          onSaveAppointmentEdits={staffPanel.handleSaveAppointmentEdits}
-          isUpdatingAppointment={staffPanel.isUpdatingAppointment}
-          editorTotals={staffPanel.editorTotals}
-          staffMembers={staffMembers}
-          staffForm={admin.staffForm}
-          onStaffFormChange={(field, value) =>
-            admin.setStaffForm((current) => ({
-              ...current,
-              [field]: value,
-              ...(field === "role" && value === "admin" ? { barberId: "" } : {})
-            }))
-          }
-          onSaveStaff={admin.handleSaveStaff}
-          isSavingStaff={admin.isSavingStaff}
-          staffActionId={admin.staffActionId}
-          onEditStaffMember={admin.handleEditStaffMember}
-          onToggleStaffActive={admin.handleToggleStaffActive}
-          onResetStaffPassword={admin.handleResetStaffPassword}
-          staffFeedback={admin.staffFeedback}
-          brandConfig={brandEditor}
-          onBrandConfigChange={(field, value) => setBrandEditor((current) => ({ ...current, [field]: value }))}
-          onSaveBrandSettings={admin.handleSaveBrandSettings}
-          isSavingBrand={admin.isSavingBrand}
-          onUploadBrandLogo={admin.handleUploadBrandLogo}
-          galleryPosts={galleryPosts}
-          galleryEditorForm={admin.galleryEditorForm}
-          onGalleryEditorChange={(field, value) =>
-            admin.setGalleryEditorForm((current) => ({ ...current, [field]: value }))
-          }
-          onSaveGalleryPost={admin.handleSaveGalleryPost}
-          isSavingGalleryPost={admin.isSavingGalleryPost}
-          galleryActionId={admin.galleryActionId}
-          onEditGalleryPost={admin.setGalleryEditorForm}
-          onCreateGalleryPost={() =>
-            admin.setGalleryEditorForm({
-              id: "",
-              title: "",
-              caption: "",
-              tag: "",
-              imagePath: "",
-              imageUrl: "",
-              sortOrder: galleryPosts.length + 1,
-              isActive: true
-            })
-          }
-          onToggleGalleryPostActive={admin.handleToggleGalleryPostActive}
-          onUploadGalleryImage={admin.handleUploadGalleryImage}
-          logs={logs}
-          adminBarberFilter={admin.adminBarberFilter}
-          onAdminBarberFilterChange={admin.setAdminBarberFilter}
-          adminStatusFilter={admin.adminStatusFilter}
-          onAdminStatusFilterChange={admin.setAdminStatusFilter}
-          adminDateFilter={admin.adminDateFilter}
-          onAdminDateFilterChange={admin.setAdminDateFilter}
-          dateOptions={dateOptions}
-          adminAppointments={admin.adminAppointments}
-          onBeginEditAppointment={staffPanel.beginEditAppointment}
-          statusUpdateId={staffPanel.statusUpdateId}
-          onStatusChange={staffPanel.handleStatusChange}
-          hydrateAppointmentView={hydrateAppointmentView}
-          getAppointmentServiceList={(appointment) => getAppointmentServiceList(appointment, services)}
-        />
-      ) : null}
+                    return { ...current, serviceIds: nextIds, startTime: "" };
+                  })
+                }
+                onSaveAppointmentEdits={staffPanel.handleSaveAppointmentEdits}
+                isUpdatingAppointment={staffPanel.isUpdatingAppointment}
+                editorTotals={staffPanel.editorTotals}
+                staffMembers={staffMembers}
+                staffForm={admin.staffForm}
+                onStaffFormChange={(field, value) =>
+                  admin.setStaffForm((current) => ({
+                    ...current,
+                    [field]: value,
+                    ...(field === "role" && value === "admin" ? { barberId: "" } : {})
+                  }))
+                }
+                onSaveStaff={admin.handleSaveStaff}
+                isSavingStaff={admin.isSavingStaff}
+                staffActionId={admin.staffActionId}
+                onEditStaffMember={admin.handleEditStaffMember}
+                onToggleStaffActive={admin.handleToggleStaffActive}
+                onResetStaffPassword={admin.handleResetStaffPassword}
+                staffFeedback={admin.staffFeedback}
+                brandConfig={brandEditor}
+                onBrandConfigChange={(field, value) => setBrandEditor((current) => ({ ...current, [field]: value }))}
+                onSaveBrandSettings={admin.handleSaveBrandSettings}
+                isSavingBrand={admin.isSavingBrand}
+                onUploadBrandLogo={admin.handleUploadBrandLogo}
+                galleryPosts={galleryPosts}
+                galleryEditorForm={admin.galleryEditorForm}
+                onGalleryEditorChange={(field, value) =>
+                  admin.setGalleryEditorForm((current) => ({ ...current, [field]: value }))
+                }
+                onSaveGalleryPost={admin.handleSaveGalleryPost}
+                isSavingGalleryPost={admin.isSavingGalleryPost}
+                galleryActionId={admin.galleryActionId}
+                onEditGalleryPost={admin.setGalleryEditorForm}
+                onCreateGalleryPost={() =>
+                  admin.setGalleryEditorForm({
+                    id: "",
+                    title: "",
+                    caption: "",
+                    tag: "",
+                    imagePath: "",
+                    imageUrl: "",
+                    sortOrder: galleryPosts.length + 1,
+                    isActive: true
+                  })
+                }
+                onToggleGalleryPostActive={admin.handleToggleGalleryPostActive}
+                onUploadGalleryImage={admin.handleUploadGalleryImage}
+                logs={logs}
+                adminBarberFilter={admin.adminBarberFilter}
+                onAdminBarberFilterChange={admin.setAdminBarberFilter}
+                adminStatusFilter={admin.adminStatusFilter}
+                onAdminStatusFilterChange={admin.setAdminStatusFilter}
+                adminDateFilter={admin.adminDateFilter}
+                onAdminDateFilterChange={admin.setAdminDateFilter}
+                dateOptions={dateOptions}
+                adminAppointments={admin.adminAppointments}
+                onBeginEditAppointment={staffPanel.beginEditAppointment}
+                statusUpdateId={staffPanel.statusUpdateId}
+                onStatusChange={staffPanel.handleStatusChange}
+                hydrateAppointmentView={hydrateAppointmentView}
+                getAppointmentServiceList={(appointment) => getAppointmentServiceList(appointment, services)}
+              />
+            </Suspense>
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

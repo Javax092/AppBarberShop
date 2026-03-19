@@ -21,6 +21,13 @@ import {
   getVisibleAppointments,
   getVisibleNotifications
 } from "../utils/dashboard";
+import {
+  buildOccupancyHeatmap,
+  buildRevenueProjection,
+  buildReactivationCandidates,
+  buildWeeklyDemandNarrative,
+  detectScheduleConflicts
+} from "../utils/experience";
 
 export function useAdminDashboard({
   barbers,
@@ -101,6 +108,23 @@ export function useAdminDashboard({
   const occupancyStats = useMemo(
     () => calculateOccupancyStats(barbers, bookingSchedule, scheduleBlocks, dateOptions[0]),
     [barbers, bookingSchedule, scheduleBlocks]
+  );
+  const occupancyHeatmap = useMemo(
+    () => buildOccupancyHeatmap(barbers, bookingSchedule, scheduleBlocks, dateOptions.slice(0, 7)),
+    [barbers, bookingSchedule, scheduleBlocks]
+  );
+  const revenueProjection = useMemo(
+    () => buildRevenueProjection(appointments, dateOptions[0]),
+    [appointments]
+  );
+  const reactivationCandidates = useMemo(
+    () => buildReactivationCandidates(customers, brandConfig.businessWhatsapp),
+    [brandConfig.businessWhatsapp, customers]
+  );
+  const scheduleConflicts = useMemo(() => detectScheduleConflicts(appointments), [appointments]);
+  const weeklyDemandNarrative = useMemo(
+    () => buildWeeklyDemandNarrative(occupancyHeatmap),
+    [occupancyHeatmap]
   );
 
   async function handleCreateBlock(event) {
@@ -331,6 +355,11 @@ export function useAdminDashboard({
     adminAppointments,
     adminStats,
     occupancyStats,
+    occupancyHeatmap,
+    revenueProjection,
+    reactivationCandidates,
+    scheduleConflicts,
+    weeklyDemandNarrative,
     adminBarberFilter,
     setAdminBarberFilter,
     adminStatusFilter,

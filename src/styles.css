@@ -13,8 +13,26 @@
   --sage: #81b0a5;
   --green: #51c491;
   --danger: #ff8d84;
+  --brand-accent: #c69137;
+  --brand-accent-soft: rgba(198, 145, 55, 0.18);
+  --brand-accent-strong: #f0c472;
+  --brand-support: #81b0a5;
+  --brand-support-soft: rgba(129, 176, 165, 0.18);
   --shadow: 0 34px 110px rgba(0, 0, 0, 0.42);
   font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4ede4;
+  --panel: rgba(255, 251, 245, 0.88);
+  --panel-strong: rgba(255, 255, 255, 0.96);
+  --panel-soft: rgba(94, 67, 40, 0.04);
+  --line: rgba(80, 53, 20, 0.12);
+  --line-strong: rgba(198, 145, 55, 0.3);
+  --text: #24170c;
+  --muted: #715f4a;
+  --shadow: 0 26px 70px rgba(71, 46, 20, 0.14);
 }
 
 * {
@@ -25,9 +43,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(198, 145, 55, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(129, 176, 165, 0.12), transparent 30%),
-    linear-gradient(180deg, #050403, #0b0907 38%, #14100c);
+    radial-gradient(circle at top left, var(--brand-accent-soft), transparent 28%),
+    radial-gradient(circle at top right, var(--brand-support-soft), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, #050403), var(--bg) 38%, color-mix(in srgb, var(--bg) 86%, #ffffff));
   color: var(--text);
 }
 
@@ -1078,6 +1096,292 @@ a {
 
   .admin-stats,
   .finance-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hero-actions,
+.heatmap-legend,
+.occupancy-cells,
+.reactivation-strip,
+.skeleton-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-actions {
+  margin-top: 18px;
+}
+
+.infra-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  border-color: var(--line);
+  background: var(--panel-soft);
+}
+
+.infra-banner.error {
+  border-color: rgba(255, 141, 132, 0.28);
+  background: rgba(255, 141, 132, 0.08);
+}
+
+.skeleton-shell {
+  display: grid;
+  gap: 18px;
+  text-align: left;
+}
+
+.skeleton-line,
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 244, 227, 0.06);
+}
+
+.skeleton-line::after,
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  transform: translateX(-100%);
+  animation: skeleton-shift 1.5s infinite;
+}
+
+.skeleton-line {
+  height: 18px;
+  border-radius: 999px;
+}
+
+.skeleton-line-lg {
+  width: 34%;
+}
+
+.skeleton-line-md {
+  width: 52%;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.skeleton-block {
+  min-height: 180px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+}
+
+.time-chip {
+  display: grid;
+  gap: 4px;
+}
+
+.time-chip small {
+  color: inherit;
+  opacity: 0.74;
+  font-size: 0.76rem;
+}
+
+.time-chip-easy {
+  border-color: rgba(81, 196, 145, 0.2);
+  background: rgba(81, 196, 145, 0.1);
+}
+
+.time-chip-tight {
+  border-color: rgba(240, 196, 114, 0.22);
+  background: rgba(240, 196, 114, 0.12);
+}
+
+.time-chip-blocked {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.heatmap-legend {
+  margin: -8px 0 24px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.heat-dot {
+  width: 10px;
+  height: 10px;
+  display: inline-flex;
+  border-radius: 999px;
+  margin-right: 8px;
+}
+
+.heat-easy {
+  background: var(--green);
+}
+
+.heat-tight {
+  background: var(--gold-strong);
+}
+
+.heat-blocked {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.memory-card,
+.ops-banner,
+.reactivation-card,
+.occupancy-cell {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 244, 227, 0.03);
+}
+
+.memory-card,
+.ops-banner {
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.celebration-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.celebration-row span {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--gold-strong), var(--brand-support));
+  animation: confetti-bob 1.2s ease-in-out infinite alternate;
+}
+
+.celebration-row span:nth-child(2n) {
+  animation-delay: 0.18s;
+}
+
+.celebration-row span:nth-child(3n) {
+  animation-delay: 0.34s;
+}
+
+.confirmation-check {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(81, 196, 145, 0.26), rgba(81, 196, 145, 0.08));
+  border: 1px solid rgba(81, 196, 145, 0.28);
+  font-size: 2rem;
+  font-weight: 800;
+  color: #baf4d7;
+  margin: 6px 0 14px;
+}
+
+.projection-strip {
+  margin-bottom: 24px;
+}
+
+.occupancy-heatmap {
+  display: grid;
+  gap: 14px;
+}
+
+.occupancy-row {
+  display: grid;
+  gap: 10px;
+}
+
+.occupancy-cell {
+  min-width: 84px;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.occupancy-cell span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.occupancy-low {
+  background: rgba(81, 196, 145, 0.1);
+}
+
+.occupancy-medium {
+  background: rgba(240, 196, 114, 0.1);
+}
+
+.occupancy-high {
+  background: rgba(255, 141, 132, 0.12);
+}
+
+.conflict-card {
+  border-color: rgba(255, 141, 132, 0.28);
+}
+
+.reactivation-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+
+.reactivation-card {
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.loyalty-bronze {
+  border-color: rgba(176, 114, 63, 0.28);
+}
+
+.loyalty-prata {
+  border-color: rgba(190, 198, 214, 0.28);
+}
+
+.loyalty-ouro {
+  border-color: rgba(240, 196, 114, 0.32);
+}
+
+.loyalty-badge-bronze {
+  color: #d9a170;
+}
+
+.loyalty-badge-prata {
+  color: #d5dfef;
+}
+
+.loyalty-badge-ouro {
+  color: #ffd685;
+}
+
+@keyframes confetti-bob {
+  from {
+    transform: translateY(-4px) rotate(-6deg);
+  }
+
+  to {
+    transform: translateY(4px) rotate(6deg);
+  }
+}
+
+@keyframes skeleton-shift {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 760px) {
+  .infra-banner,
+  .hero-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .reactivation-strip,
+  .skeleton-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -31,7 +31,11 @@ export function AppHeader({
   isFinishingRecovery,
   adminStats,
   queuedNotifications,
-  brandConfig
+  brandConfig,
+  themeMode,
+  onToggleTheme,
+  canInstallApp,
+  onInstallApp
 }) {
   return (
     <header className="hero-card">
@@ -47,6 +51,17 @@ export function AppHeader({
         <div className="brand-inline hero-meta">
           <strong>Contato</strong>
           <span>{brandConfig.businessWhatsapp}</span>
+        </div>
+        <div className="hero-actions">
+          {canInstallApp ? (
+            <button className="primary-button compact-button" onClick={onInstallApp} type="button">
+              Instalar app
+            </button>
+          ) : null}
+          <button className="secondary-button compact-button" onClick={onToggleTheme} type="button">
+            {themeMode === "dark" ? "Modo claro" : "Modo escuro"}
+          </button>
+          <span className="tag">PWA pronto</span>
         </div>
       </div>
 

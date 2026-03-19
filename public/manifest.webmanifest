@@ -1,0 +1,22 @@
+{
+  "name": "O Pai ta on",
+  "short_name": "Pai ta on",
+  "description": "Agenda premium de barbearia com reserva, CRM e operacao em tempo real.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0907",
+  "theme_color": "#120d09",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/paitaon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/paion2.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

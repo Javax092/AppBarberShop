@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import editorialPortrait from "../assets/portrait-editorial.svg";
 import heritagePortrait from "../assets/portrait-heritage.svg";
 import { formatCurrency, formatDateLabel, formatLongDate } from "../utils/schedule";
@@ -39,6 +40,7 @@ export function BookingView({
   confirmation,
   bookingProgress,
   bookingStatusMessage,
+  bookingMomentLabel,
   isBookingReady
 }) {
   return (
@@ -149,13 +151,21 @@ export function BookingView({
           {availableSlots.map((slot) => (
             <button
               key={slot.value}
-              className={`time-chip ${selectedTime === slot.value ? "active" : ""}`}
+              className={`time-chip time-chip-${slot.heat || "blocked"} ${selectedTime === slot.value ? "active" : ""}`}
               disabled={slot.disabled || isLoading}
               onClick={() => onSelectTime(slot.value)}
+              title={slot.heatLabel ? `${slot.heatLabel} • ${slot.confidence}%` : slot.value}
             >
-              {slot.value}
+              <span>{slot.value}</span>
+              <small>{slot.heatLabel || "Bloqueado"}</small>
             </button>
           ))}
+        </div>
+
+        <div className="heatmap-legend">
+          <span><i className="heat-dot heat-easy" /> Verde = facil encaixe</span>
+          <span><i className="heat-dot heat-tight" /> Amarelo = agenda apertada</span>
+          <span><i className="heat-dot heat-blocked" /> Cinza = bloqueado</span>
         </div>
 
         {recommendedSlots.length ? (
@@ -253,12 +263,31 @@ export function BookingView({
           <p>{bookingStatusMessage}</p>
         </div>
 
+        <div className="memory-card">
+          <span className="mini-badge">Tom pessoal</span>
+          <strong>Resumo inteligente</strong>
+          <p>{bookingMomentLabel}</p>
+        </div>
+
         {confirmation ? (
-          <div className="confirmation-box">
+          <motion.div
+            className="confirmation-box"
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.34, ease: "easeOut" }}
+          >
+            <div className="celebration-row" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
             <div className="confirmation-top">
               <span className="mini-badge">Confirmado</span>
               <strong>{confirmation.id}</strong>
             </div>
+            <div className="confirmation-check">✓</div>
             <p>
               Reserva confirmada para {formatLongDate(confirmation.date)} as {confirmation.startTime} com{" "}
               {confirmation.barber?.name}.
@@ -281,7 +310,7 @@ export function BookingView({
                 Cancelar no WhatsApp
               </a>
             </div>
-          </div>
+          </motion.div>
         ) : (
           <div className="notice-box">
             Revise os dados e finalize o agendamento quando o checklist estiver completo.
