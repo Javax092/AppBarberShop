@@ -3,8 +3,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { AppHeader } from "./components/AppHeader";
 import { BookingView } from "./components/BookingView";
 import { GalleryStrip } from "./components/GalleryStrip";
-import { TabBar } from "./components/TabBar";
 import { Toast } from "./components/Toast";
+import { AppShell } from "./components/layout/AppShell";
+import { NetworkBanner } from "./components/ui/NetworkBanner";
 import { bootstrapAppData, getCurrentSessionProfile, logAppEvent } from "./lib/api";
 import { dateOptions, emptyBrandConfig } from "./app/constants";
 import { isSupabaseConfigured, subscribeToRealtimeTables } from "./lib/supabase";
@@ -17,6 +18,7 @@ import { useServices } from "./hooks/useServices";
 import { useStaffPanel } from "./hooks/useStaffPanel";
 import { useAdminDashboard } from "./hooks/useAdminDashboard";
 import { useAuthControls } from "./hooks/useAuthControls";
+import { buildTabs } from "./utils/dashboard";
 import { buildRealtimeStatusLabel } from "./utils/experience";
 
 const THEME_STORAGE_KEY = "appmobilebarbearia.theme-mode";
@@ -432,44 +434,72 @@ function App() {
     return <AppSkeleton />;
   }
 
-  return (
-    <div className={`app-shell view-${activeView}`}>
-      <AppHeader
-        selectedBarber={booking.selectedBarber}
-        session={session}
-        loginForm={auth.loginForm}
-        onLoginFormChange={(field, value) => auth.setLoginForm((current) => ({ ...current, [field]: value }))}
-        onLogin={auth.handleLogin}
-        onLogout={auth.handleLogout}
-        authError={auth.authError}
-        isAuthenticating={auth.isAuthenticating}
-        recoveryEmail={auth.recoveryEmail}
-        onRecoveryEmailChange={auth.setRecoveryEmail}
-        onRequestPasswordReset={auth.handleRequestPasswordReset}
-        isRequestingPasswordReset={auth.isRequestingPasswordReset}
-        passwordResetFeedback={auth.passwordResetFeedback}
-        isRecoveryMode={auth.isRecoveryMode}
-        recoveryPassword={auth.recoveryPassword}
-        onRecoveryPasswordChange={auth.setRecoveryPassword}
-        onFinishRecovery={auth.handleFinishRecovery}
-        isFinishingRecovery={auth.isFinishingRecovery}
-        adminStats={admin.adminStats}
-        queuedNotifications={admin.queuedNotifications}
-        brandConfig={brandConfig}
-        themeMode={themeMode}
-        onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
-        canInstallApp={Boolean(installPromptEvent)}
-        onInstallApp={handleInstallApp}
-      />
+  const shellItems = buildTabs(session);
+  const shellFooter = session ? (
+    <div className="ops-shell__sidebar-card" style={{ padding: 18, display: "grid", gap: 10 }}>
+      <span className="mini-badge">{session.role === "admin" ? "Admin" : "Equipe"}</span>
+      <strong>{session.fullName}</strong>
+      <span style={{ color: "var(--text-secondary)" }}>{session.email}</span>
+      <button className="secondary-button compact-button" type="button" onClick={auth.handleLogout}>
+        Sair
+      </button>
+    </div>
+  ) : null;
 
+  const topSlot = (
+    <AppHeader
+      selectedBarber={booking.selectedBarber}
+      session={session}
+      loginForm={auth.loginForm}
+      onLoginFormChange={(field, value) => auth.setLoginForm((current) => ({ ...current, [field]: value }))}
+      onLogin={auth.handleLogin}
+      onLogout={auth.handleLogout}
+      authError={auth.authError}
+      isAuthenticating={auth.isAuthenticating}
+      recoveryEmail={auth.recoveryEmail}
+      onRecoveryEmailChange={auth.setRecoveryEmail}
+      onRequestPasswordReset={auth.handleRequestPasswordReset}
+      isRequestingPasswordReset={auth.isRequestingPasswordReset}
+      passwordResetFeedback={auth.passwordResetFeedback}
+      isRecoveryMode={auth.isRecoveryMode}
+      recoveryPassword={auth.recoveryPassword}
+      onRecoveryPasswordChange={auth.setRecoveryPassword}
+      onFinishRecovery={auth.handleFinishRecovery}
+      isFinishingRecovery={auth.isFinishingRecovery}
+      adminStats={admin.adminStats}
+      queuedNotifications={admin.queuedNotifications}
+      brandConfig={brandConfig}
+      themeMode={themeMode}
+      onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
+      canInstallApp={Boolean(installPromptEvent)}
+      onInstallApp={handleInstallApp}
+      loading={isInitialLoading}
+    />
+  );
+
+  const rightRail = (
+    <>
+      <NetworkBanner />
       {loadError ? <div className="infra-banner error">{loadError}</div> : null}
       <div className="infra-banner">
         <span>Realtime</span>
         <strong>{buildRealtimeStatusLabel(lastRealtimeSyncAt, liveEvents)}</strong>
       </div>
+    </>
+  );
 
+  return (
+    <AppShell
+      activeItem={activeView}
+      items={shellItems}
+      brandName={brandConfig.logoText || "O Pai Ta On"}
+      tagline="Barbearia premium mobile-first"
+      onNavigate={setActiveView}
+      sidebarFooter={shellFooter}
+      rightRail={rightRail}
+      topSlot={topSlot}
+    >
       <GalleryStrip galleryPosts={galleryPosts} />
-      {session?.role ? <TabBar tabs={admin.tabs} activeView={activeView} onChange={setActiveView} /> : null}
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -664,7 +694,7 @@ function App() {
         </motion.div>
       </AnimatePresence>
       <Toast toast={toast} />
-    </div>
+    </AppShell>
   );
 }
 

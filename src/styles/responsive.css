@@ -1,0 +1,92 @@
+/* ALTERACAO: tipografia responsiva, grid desktop e polimento mobile/global do app. */
+:root {
+  --hero-title-size: clamp(2rem, 6vw, 4rem);
+  --hero-subtitle-size: clamp(1rem, 2.5vw, 1.5rem);
+  --body-size-fluid: clamp(0.875rem, 1.5vw, 1rem);
+  --label-size-fluid: clamp(0.7rem, 1.2vw, 0.75rem);
+  --color-gold-border: rgba(198, 145, 55, 0.34);
+  --color-gold-dim: rgba(198, 145, 55, 0.12);
+  --color-error-bg: rgba(255, 141, 132, 0.12);
+}
+
+body {
+  font-size: var(--body-size-fluid);
+}
+
+.hero-copy h1,
+.section-head h2,
+.lookbook-copy h3 {
+  font-size: var(--hero-title-size);
+}
+
+.hero-copy p,
+.section-head p,
+.gallery-copy p,
+.barber-card-v3__copy,
+.barber-card-v3__hours {
+  font-size: var(--body-size-fluid);
+}
+
+.eyebrow,
+.tag,
+.mini-badge,
+.stepper__label,
+.ops-shell__nav-item span:last-child {
+  font-size: var(--label-size-fluid);
+}
+
+.clickable-card,
+.service-card-v2,
+.barber-card-v3,
+.gallery-card,
+.metric-card,
+.stat-card,
+.block-card,
+.customer-card,
+.admin-card {
+  cursor: pointer;
+  transition: transform 200ms var(--ease-snap), box-shadow 200ms var(--ease-smooth);
+}
+
+.clickable-card:hover,
+.service-card-v2:hover,
+.barber-card-v3:hover,
+.gallery-card:hover,
+.metric-card:hover,
+.stat-card:hover,
+.block-card:hover,
+.customer-card:hover,
+.admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.whatsapp-hover-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.whatsapp-hover-link svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 200ms var(--ease-smooth), transform 200ms var(--ease-smooth);
+}
+
+.whatsapp-hover-link:hover svg {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+@media (max-width: 1023px) {
+  .app-shell,
+  .ops-shell__layout {
+    width: min(100%, calc(100% - 20px));
+  }
+
+  .hero-copy h1 {
+    white-space: normal;
+  }
+}

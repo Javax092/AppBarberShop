@@ -1,4 +1,5 @@
 import { formatCurrency, formatLongDate } from "../utils/schedule";
+import { EmptyState } from "./ui/EmptyState";
 
 const showcaseImage = "/paion2.png";
 const brandLogo = "/paitaon.png";
@@ -280,6 +281,14 @@ export function PanelView({
             <span>cancelados</span>
           </div>
         </div>
+
+        {!agendaAppointments.length ? (
+          <EmptyState
+            title="Nenhum agendamento hoje."
+            description="A agenda atual esta livre. Use a leitura semanal para enxergar os proximos encaixes."
+            actionLabel="Ver semana completa"
+          />
+        ) : null}
 
         <div className="agenda-list">
           {agendaAppointments.map((appointment) => {

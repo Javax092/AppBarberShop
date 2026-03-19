@@ -546,7 +546,7 @@ a {
 .booking-stage::before {
   background:
     linear-gradient(180deg, rgba(8, 6, 3, 0.7), rgba(8, 6, 3, 0.84)),
-    url("/AGENDE SEU HORÁRIO - ALFA BARBEARIA.jpeg") center 18% / cover no-repeat;
+    url("/ash.jpeg") center 18% / cover no-repeat;
 }
 
 .ambient-stage::before {
@@ -1515,7 +1515,7 @@ a {
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(8, 6, 3, 0.62), rgba(8, 6, 3, 0.88)),
-    url("/AGENDE SEU HORÁRIO - ALFA BARBEARIA.jpeg") center / cover no-repeat;
+    url("/ash.jpeg") center / cover no-repeat;
 }
 
 .booking-progress-sticky {
