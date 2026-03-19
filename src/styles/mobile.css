@@ -1,0 +1,53 @@
+/* ALTERACAO: polimento mobile para listas, datas e inputs sensiveis a touch. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  min-height: 48px;
+}
+
+input,
+select,
+textarea {
+  font-size: max(16px, 1rem);
+}
+
+[data-date-carousel="true"] {
+  /* ALTERACAO: carrossel de datas com scroll snap nativo. */
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+[data-date-carousel="true"] > * {
+  scroll-snap-align: start;
+}
+
+[data-touch-list="true"] {
+  /* ALTERACAO: listas mobile com overscroll controlado. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+[data-no-pull-refresh="true"] {
+  /* ALTERACAO: bloqueia pull-to-refresh em areas sensiveis ao gesto horizontal. */
+  overscroll-behavior-y: contain;
+  touch-action: pan-x pan-y;
+}
+
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}

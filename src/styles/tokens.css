@@ -1,0 +1,134 @@
+/* ALTERACAO: design tokens globais do produto com suporte dark/light. */
+:root {
+  /* ALTERACAO: paleta base do brand em modo dark premium. */
+  --color-gold: #c69137;
+  --color-gold-light: #f0c472;
+  --color-dark: #120d09;
+  --color-blade: #231813;
+  --color-smoke: #a39183;
+  --color-cream: #f6efe7;
+  --color-muted: #6c5a4a;
+  --surface-base: #120d09;
+  --surface-elevated: rgba(29, 22, 17, 0.92);
+  --surface-soft: rgba(255, 239, 215, 0.05);
+  --surface-contrast: rgba(255, 249, 241, 0.9);
+  --border-soft: rgba(255, 228, 194, 0.14);
+  --border-strong: rgba(198, 145, 55, 0.4);
+  --text-primary: var(--color-cream);
+  --text-secondary: rgba(246, 239, 231, 0.74);
+  --text-tertiary: rgba(246, 239, 231, 0.52);
+  --status-success: #56c18d;
+  --status-danger: #ff8d84;
+  --status-info: #7faec0;
+
+  --font-display: "Cormorant Garamond", serif;
+  --font-body: "Plus Jakarta Sans", system-ui, sans-serif;
+
+  /* ALTERACAO: escala tipografica modular do design system. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.375rem;
+  --text-4xl: clamp(2.85rem, 8vw, 4.8rem);
+
+  --leading-tight: 1.05;
+  --leading-snug: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.72;
+
+  --tracking-tight: -0.03em;
+  --tracking-base: 0;
+  --tracking-wide: 0.08em;
+  --tracking-caps: 0.16em;
+
+  /* ALTERACAO: spacing, radius, elevation e camadas. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2rem;
+  --radius-pill: 999px;
+
+  --shadow-soft: 0 12px 34px rgba(0, 0, 0, 0.16);
+  --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 26px 72px rgba(0, 0, 0, 0.34);
+  --shadow-glow: 0 0 0 1px rgba(198, 145, 55, 0.18), 0 22px 60px rgba(198, 145, 55, 0.12);
+
+  --z-base: 1;
+  --z-header: 30;
+  --z-navigation: 35;
+  --z-overlay: 40;
+  --z-toast: 50;
+
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.24, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.2, 1.2, 0.3, 1);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* ALTERACAO: override de superficies e contraste para modo claro. */
+    --surface-base: #f6efe7;
+    --surface-elevated: rgba(255, 250, 245, 0.9);
+    --surface-soft: rgba(18, 13, 9, 0.04);
+    --surface-contrast: #ffffff;
+    --border-soft: rgba(29, 22, 17, 0.08);
+    --border-strong: rgba(198, 145, 55, 0.28);
+    --text-primary: #120d09;
+    --text-secondary: rgba(18, 13, 9, 0.72);
+    --text-tertiary: rgba(18, 13, 9, 0.48);
+    --shadow-soft: 0 14px 34px rgba(66, 42, 18, 0.08);
+    --shadow-md: 0 18px 52px rgba(66, 42, 18, 0.12);
+    --shadow-lg: 0 28px 72px rgba(66, 42, 18, 0.18);
+  }
+}
+
+/* ALTERACAO: animacao de reveal vertical para cards e telas. */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ALTERACAO: animacao lateral para entradas de navegacao e paines. */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-20px, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ALTERACAO: shimmer para skeleton loaders. */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(120%);
+  }
+}
