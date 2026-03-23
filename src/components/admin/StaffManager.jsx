@@ -104,7 +104,9 @@ export function StaffManager({
           margin: 0;
         }
         .staff-manager__error {
-          color: #ffb7af;
+          /* CORRECAO: remove cor hardcoded que perdia contraste fora do dark original. */
+          /* MOTIVO: status-danger acompanha o tema sem virar texto claro demais em superfícies claras. */
+          color: var(--status-danger);
           font-size: 0.8rem;
         }
       `}</style>

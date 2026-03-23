@@ -11,12 +11,13 @@ import {
   services as fallbackServices,
   staffMembers as fallbackStaffMembers
 } from "../data";
-import { getActiveAuthSession, getSupabaseClient, isSupabaseConfigured } from "./supabase";
+import { getActiveAuthSession, getSupabaseClient, invokeSupabaseFunction, isSupabaseConfigured } from "./supabase";
 
 const BARBERS_TABLE = "barbers";
 const BRAND_TABLE = "app_brand_settings";
 const BLOCKS_TABLE = "schedule_blocks";
 const CUSTOMERS_TABLE = "customers";
+const GALLERY_BUCKET = "gallery";
 const GALLERY_TABLE = "gallery_posts";
 const LOGS_TABLE = "app_event_logs";
 const NOTIFICATIONS_TABLE = "appointment_notifications";
@@ -51,6 +52,14 @@ function storeFallbackSession(session) {
   }
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+function clearFallbackSession() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  localStorage.removeItem(SESSION_KEY);
 }
 
 function normalizeBarber(row) {
@@ -183,6 +192,73 @@ function normalizeStaffMember(row) {
   };
 }
 
+function isEdgeFunctionRequestError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+  return (
+    normalizedMessage.includes("edge function") ||
+    normalizedMessage.includes("failed to send a request") ||
+    normalizedMessage.includes("failed to fetch") ||
+    normalizedMessage.includes("functionsfetcherror")
+  );
+}
+
+async function extractEdgeFunctionResponseMessage(error) {
+  if (!(error instanceof Error)) {
+    return "";
+  }
+
+  const response = error.context;
+  if (!response || typeof response.clone !== "function") {
+    return "";
+  }
+
+  try {
+    const responseClone = response.clone();
+    const contentType = responseClone.headers.get("content-type") ?? "";
+    const statusLabel = responseClone.status ? ` (HTTP ${responseClone.status})` : "";
+
+    if (contentType.includes("application/json")) {
+      const payload = await responseClone.json();
+      const message =
+        payload?.error ??
+        payload?.message ??
+        (typeof payload === "string" ? payload : "");
+
+      if (message) {
+        return `${message}${statusLabel}`;
+      }
+    }
+
+    const text = (await responseClone.text()).trim();
+    if (text) {
+      return `${text}${statusLabel}`;
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+async function buildEdgeFunctionRequestError(error) {
+  if (!isEdgeFunctionRequestError(error)) {
+    return error;
+  }
+
+  const responseMessage = await extractEdgeFunctionResponseMessage(error);
+  if (responseMessage) {
+    return new Error(responseMessage);
+  }
+
+  return new Error(
+    "Falha ao chamar a Edge Function de equipe. Verifique se `manage-staff-user` foi publicada no Supabase, se o usuario atual tem staff_profiles.role = admin e is_active = true, e se a sessao foi refeita apos a ultima alteracao de perfil. Se usar PWA, remova a versao instalada antiga antes de testar de novo."
+  );
+}
+
 function normalizeLog(row) {
   return {
     id: row.id,
@@ -206,6 +282,16 @@ function resolvePublicMediaUrl(path) {
   return data.publicUrl;
 }
 
+function resolveStoragePublicUrl(bucket, path) {
+  if (!bucket || !path || !isSupabaseConfigured()) {
+    return "";
+  }
+
+  const supabase = getSupabaseClient();
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 function normalizeBrandConfig(row) {
   return {
     logoText: row.logo_text ?? row.logoText ?? "O Pai ta on",
@@ -225,7 +311,8 @@ function normalizeGalleryPost(row) {
     caption: row.caption ?? "",
     tag: row.tag ?? "",
     imagePath: row.image_path ?? row.imagePath ?? "",
-    imageUrl: resolvePublicMediaUrl(row.image_path ?? row.imagePath ?? ""),
+    imageUrl:
+      row.image_url ?? row.imageUrl ?? resolveStoragePublicUrl(GALLERY_BUCKET, row.image_path ?? row.imagePath ?? ""),
     sortOrder: row.sort_order ?? row.sortOrder ?? 0,
     isActive: Boolean(row.is_active ?? row.isActive ?? true)
   };
@@ -259,6 +346,35 @@ async function getProfileForCurrentUser() {
     fullName: data.full_name,
     role: data.role,
     barberId: data.barber_id
+  };
+}
+
+async function requireAdminStorageAccess(sessionProfile = null) {
+  if (!isSupabaseConfigured()) {
+    return { source: "local" };
+  }
+
+  if (sessionProfile?.role && sessionProfile.role !== "admin") {
+    throw new Error("Somente administradores autenticados podem enviar imagens.");
+  }
+
+  const authSession = await getActiveAuthSession();
+
+  if (!authSession?.user) {
+    throw new Error("Somente administradores autenticados podem enviar imagens.");
+  }
+
+  const resolvedProfile =
+    sessionProfile?.authMode === "app_users" || !sessionProfile?.role ? await getProfileForCurrentUser() : sessionProfile;
+
+  if (!resolvedProfile || resolvedProfile.role !== "admin") {
+    throw new Error("Somente administradores autenticados podem enviar imagens.");
+  }
+
+  return {
+    source: "supabase",
+    session: authSession,
+    profile: resolvedProfile
   };
 }
 
@@ -477,17 +593,18 @@ export async function bootstrapAppData(sessionProfile = null) {
 }
 
 export async function getCurrentSessionProfile() {
-  const fallbackSession = getStoredFallbackSession();
-  if (fallbackSession) {
-    return fallbackSession;
-  }
-
   if (!isSupabaseConfigured()) {
     const raw = localStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
   }
 
-  return getProfileForCurrentUser();
+  const authProfile = await getProfileForCurrentUser();
+  if (authProfile) {
+    clearFallbackSession();
+    return authProfile;
+  }
+
+  return getStoredFallbackSession();
 }
 
 export async function authenticateStaff(email, password) {
@@ -509,6 +626,7 @@ export async function authenticateStaff(email, password) {
   });
 
   if (!error) {
+    clearFallbackSession();
     return getProfileForCurrentUser();
   }
 
@@ -585,17 +703,14 @@ export async function updateOwnPassword(password) {
 }
 
 export async function clearStoredSession() {
-  const fallbackSession = getStoredFallbackSession();
+  clearFallbackSession();
 
-  if (typeof localStorage !== "undefined") {
-    localStorage.removeItem(SESSION_KEY);
-  }
-
-  if (fallbackSession) {
+  if (!isSupabaseConfigured()) {
     return;
   }
 
-  if (!isSupabaseConfigured()) {
+  const authSession = await getActiveAuthSession();
+  if (!authSession?.user) {
     return;
   }
 
@@ -1161,10 +1276,7 @@ export async function uploadMediaAsset(file, folder = "general", sessionProfile 
     .replace(/(^-|-$)/g, "");
   const path = `${folder}/${Date.now()}-${safeBaseName || "asset"}.${extension}`;
   const supabase = getSupabaseClient();
-
-  if (sessionProfile?.authMode === "app_users") {
-    throw new Error("Upload de imagem exige login admin completo no Supabase Auth.");
-  }
+  await requireAdminStorageAccess(sessionProfile);
 
   const { error } = await supabase.storage.from(MEDIA_BUCKET).upload(path, file, {
     cacheControl: "3600",
@@ -1184,6 +1296,8 @@ export async function uploadMediaAsset(file, folder = "general", sessionProfile 
   };
 }
 
+export { requireAdminStorageAccess };
+
 export async function saveStaffMember(staffMember) {
   if (!isSupabaseConfigured()) {
     return {
@@ -1196,8 +1310,8 @@ export async function saveStaffMember(staffMember) {
   }
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("manage-staff-user", {
-    body: {
+  try {
+    const { data, error } = await invokeSupabaseFunction("manage-staff-user", {
       action: "upsert",
       staff: {
         id: staffMember.id || null,
@@ -1208,17 +1322,19 @@ export async function saveStaffMember(staffMember) {
         isActive: staffMember.isActive ?? true,
         password: staffMember.password?.trim() || null
       }
+    });
+
+    if (error) {
+      throw error;
     }
-  });
 
-  if (error) {
-    throw error;
+    return {
+      source: "supabase",
+      data: normalizeStaffMember(data?.staff ?? data?.profile)
+    };
+  } catch (error) {
+    throw await buildEdgeFunctionRequestError(error);
   }
-
-  return {
-    source: "supabase",
-    data: normalizeStaffMember(data.staff)
-  };
 }
 
 export async function toggleStaffMemberActive(staffMemberId, isActive) {
@@ -1233,24 +1349,26 @@ export async function toggleStaffMemberActive(staffMemberId, isActive) {
   }
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("manage-staff-user", {
-    body: {
+  try {
+    const { data, error } = await invokeSupabaseFunction("manage-staff-user", {
       action: "toggle-active",
       staff: {
         id: staffMemberId,
         isActive
       }
+    });
+
+    if (error) {
+      throw error;
     }
-  });
 
-  if (error) {
-    throw error;
+    return {
+      source: "supabase",
+      data: data?.staff ? normalizeStaffMember(data.staff) : { id: staffMemberId, isActive }
+    };
+  } catch (error) {
+    throw await buildEdgeFunctionRequestError(error);
   }
-
-  return {
-    source: "supabase",
-    data: normalizeStaffMember(data.staff)
-  };
 }
 
 export async function resetStaffPassword(staffMemberId, password) {
@@ -1259,24 +1377,26 @@ export async function resetStaffPassword(staffMemberId, password) {
   }
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("manage-staff-user", {
-    body: {
+  try {
+    const { data, error } = await invokeSupabaseFunction("manage-staff-user", {
       action: "reset-password",
       staff: {
         id: staffMemberId,
         password
       }
+    });
+
+    if (error) {
+      throw error;
     }
-  });
 
-  if (error) {
-    throw error;
+    return {
+      source: "supabase",
+      data: data?.staff ? normalizeStaffMember(data.staff) : { id: staffMemberId }
+    };
+  } catch (error) {
+    throw await buildEdgeFunctionRequestError(error);
   }
-
-  return {
-    source: "supabase",
-    data: normalizeStaffMember(data.staff)
-  };
 }
 
 export async function processNotificationQueue(limit = 20) {
@@ -1291,8 +1411,8 @@ export async function processNotificationQueue(limit = 20) {
   }
 
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("process-whatsapp-queue", {
-    body: { limit }
+  const { data, error } = await invokeSupabaseFunction("process-whatsapp-queue", {
+    limit
   });
 
   if (error) {

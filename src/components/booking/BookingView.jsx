@@ -1,29 +1,482 @@
 // src/components/booking/BookingView.jsx - orquestrador enxuto da jornada de agendamento com subcomponentes internos especializados.
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
+import { formatCurrency, formatDateLabel, formatLongDate } from "../../utils/schedule";
 import { BarberCard } from "./BarberCard";
 import { ServiceCard } from "./ServiceCard";
+import { BackButton } from "../ui/BackButton";
 import { Stepper } from "../ui/Stepper";
 import { BarberCardSkeleton, ServiceCardSkeleton } from "../ui/Skeleton";
-import { formatCurrency, formatDateLabel, formatLongDate } from "../../utils/schedule";
 
-function groupSlotsByPeriod(slots) { return { morning: slots.filter((slot) => Number(slot.value.slice(0, 2)) < 12), afternoon: slots.filter((slot) => Number(slot.value.slice(0, 2)) >= 12) }; }
-function resolveAvailability(barber, availableSlots) { const next = availableSlots.find((slot) => !slot.disabled); return next ? { tone: Number(next.value.slice(0, 2)) <= new Date().getHours() + 1 ? "available" : "upcoming", label: Number(next.value.slice(0, 2)) <= new Date().getHours() + 1 ? "Disponivel agora" : `Proximo horario ${next.value}` } : { tone: "upcoming", label: `Proximo horario ${barber.workingHours.start}` }; }
-function StepFrame({ children, direction, stepKey }) { return <AnimatePresence mode="wait" custom={direction}><motion.section key={stepKey} className="booking-step-frame" custom={direction} initial={{ opacity: 0, x: direction >= 0 ? 42 : -42 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: direction >= 0 ? -42 : 42 }} transition={{ duration: 0.24, ease: "easeOut" }}>{children}</motion.section></AnimatePresence>; }
-function BarberGrid({ barbers, isLoading, selectedBarberId, onSelectBarber, availableSlots }) { return <div className="booking-barber-compact-grid">{isLoading ? Array.from({ length: 2 }).map((_, index) => <BarberCardSkeleton key={index} />) : barbers.map((barber) => { const availability = resolveAvailability(barber, availableSlots); return <BarberCard key={barber.id} barber={barber} selected={selectedBarberId === barber.id} statusTone={availability.tone} statusLabel={availability.label} onClick={() => onSelectBarber(barber.id)} />; })}</div>; }
-function ServiceGrid({ bookingServices, isLoading, selectedServiceIds, onToggleService }) { return <div className="booking-services-grid">{isLoading ? Array.from({ length: 3 }).map((_, index) => <ServiceCardSkeleton key={index} />) : bookingServices.map((service) => <ServiceCard key={service.id} name={service.name} category={service.category} price={formatCurrency(service.price)} duration={`${service.duration} min`} badge={service.badge} selected={selectedServiceIds.includes(service.id)} onClick={() => onToggleService(service.id)} />)}</div>; }
-function DatePicker({ dateOptions, selectedDate, onSelectDate }) { return <div className="booking-day-row" role="tablist" aria-label="Datas disponiveis">{dateOptions.map((date) => <button key={date} className={`day-chip ${selectedDate === date ? "active" : ""}`} aria-label={`Selecionar data ${formatDateLabel(date)}`} onClick={() => onSelectDate(date)} type="button">{formatDateLabel(date)}</button>)}</div>; }
-function TimeGrid({ title, slots, selectedTime, recommendedSlots, onSelectTime, isLoading }) { return <div className="booking-time-period"><strong>{title}</strong><div className="booking-time-grid-compact">{slots.length ? slots.map((slot) => <button key={slot.value} className={`time-chip time-chip-${slot.heat || "blocked"} ${recommendedSlots.some((item) => item.value === slot.value) ? "recommended" : ""} ${selectedTime === slot.value ? "active" : ""}`} aria-label={`Selecionar horario ${slot.value}`} disabled={slot.disabled || isLoading} onClick={() => onSelectTime(slot.value)} type="button"><span>{slot.value}</span></button>) : <p className="booking-empty-slots">Sem slots neste periodo.</p>}</div></div>; }
-function ClientForm({ clientName, onClientNameChange, clientWhatsapp, onClientWhatsappChange, notes, onNotesChange, fieldErrors }) { return <div className="form-grid booking-form-grid"><label>Nome<input value={clientName} onChange={(event) => onClientNameChange(event.target.value)} />{fieldErrors.clientName ? <span className="field-error">{fieldErrors.clientName}</span> : null}</label><label>WhatsApp<input type="tel" inputMode="numeric" maxLength={20} placeholder="(92) 99999-9999" value={clientWhatsapp} onChange={(event) => onClientWhatsappChange(event.target.value)} />{fieldErrors.clientWhatsapp ? <span className="field-error">{fieldErrors.clientWhatsapp}</span> : null}</label><label className="full">Observacoes do atendimento<textarea value={notes} onChange={(event) => onNotesChange(event.target.value)} /></label></div>; }
-function BookingSummary({ selectedBarber, summaryServices, selectedDate, selectedTime, totals, confirmation }) { return <>{<div className="booking-summary-collapsed"><strong>{selectedBarber?.name || "-"}</strong><span>{summaryServices || "Selecione servicos"}</span><span>{formatLongDate(selectedDate)} • {selectedTime || "Sem horario"}</span><span>{formatCurrency(totals.subtotal)}</span></div>}{confirmation ? <motion.div className="confirmation-box booking-confirmation-inline" initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.34, ease: "easeOut" }}><div className="confirmation-top"><span className="mini-badge">Confirmado</span><strong>{confirmation.id}</strong></div><div className="confirmation-check">✓</div><p>Reserva confirmada para {formatLongDate(confirmation.date)} as {confirmation.startTime} com {confirmation.barber?.name}.</p></motion.div> : null}</>; }
+function groupSlotsByPeriod(slots) {
+  return {
+    morning: slots.filter((slot) => Number(slot.value.slice(0, 2)) < 12),
+    afternoon: slots.filter((slot) => Number(slot.value.slice(0, 2)) >= 12)
+  };
+}
+
+function resolveAvailability(barber, availableSlots) {
+  const next = availableSlots.find((slot) => !slot.disabled);
+
+  return next
+    ? {
+        tone: Number(next.value.slice(0, 2)) <= new Date().getHours() + 1 ? "available" : "upcoming",
+        label:
+          Number(next.value.slice(0, 2)) <= new Date().getHours() + 1
+            ? "Disponivel agora"
+            : `Proximo horario ${next.value}`
+      }
+    : { tone: "upcoming", label: `Proximo horario ${barber.workingHours.start}` };
+}
+
+function StepFrame({ children, direction, stepKey }) {
+  return (
+    <AnimatePresence mode="wait" custom={direction}>
+      <motion.section
+        key={stepKey}
+        className="booking-step-frame"
+        custom={direction}
+        initial={{ opacity: 0, x: direction >= 0 ? 42 : -42 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: direction >= 0 ? -42 : 42 }}
+        transition={{ duration: 0.24, ease: "easeOut" }}
+      >
+        {children}
+      </motion.section>
+    </AnimatePresence>
+  );
+}
+
+function BarberGrid({ barbers, isLoading, selectedBarberId, onSelectBarber, availableSlots }) {
+  return (
+    <div className="booking-barber-compact-grid">
+      {isLoading
+        ? Array.from({ length: 2 }).map((_, index) => <BarberCardSkeleton key={index} />)
+        : barbers.map((barber) => {
+            const availability = resolveAvailability(barber, availableSlots);
+
+            return (
+              <BarberCard
+                key={barber.id}
+                barber={barber}
+                selected={selectedBarberId === barber.id}
+                statusTone={availability.tone}
+                statusLabel={availability.label}
+                onClick={() => onSelectBarber(barber.id)}
+              />
+            );
+          })}
+    </div>
+  );
+}
+
+function ServiceGrid({ bookingServices, isLoading, selectedServiceIds, onToggleService }) {
+  return (
+    <div className="booking-services-grid">
+      {isLoading
+        ? Array.from({ length: 3 }).map((_, index) => <ServiceCardSkeleton key={index} />)
+        : bookingServices.map((service) => (
+            <ServiceCard
+              key={service.id}
+              name={service.name}
+              category={service.category}
+              price={formatCurrency(service.price)}
+              duration={`${service.duration} min`}
+              badge={service.badge}
+              selected={selectedServiceIds.includes(service.id)}
+              onClick={() => onToggleService(service.id)}
+            />
+          ))}
+    </div>
+  );
+}
+
+function DatePicker({ dateOptions, selectedDate, onSelectDate }) {
+  return (
+    <div className="booking-day-row" role="tablist" aria-label="Datas disponiveis">
+      {dateOptions.map((date) => (
+        <button
+          key={date}
+          className={`day-chip ${selectedDate === date ? "active" : ""}`}
+          aria-label={`Selecionar data ${formatDateLabel(date)}`}
+          onClick={() => onSelectDate(date)}
+          type="button"
+        >
+          {formatDateLabel(date)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TimeGrid({ title, slots, selectedTime, recommendedSlots, onSelectTime, isLoading }) {
+  return (
+    <div className="booking-time-period">
+      <strong>{title}</strong>
+      <div className="booking-time-grid-compact">
+        {slots.length ? (
+          slots.map((slot) => (
+            <button
+              key={slot.value}
+              className={`time-chip time-chip-${slot.heat || "blocked"} ${
+                recommendedSlots.some((item) => item.value === slot.value) ? "recommended" : ""
+              } ${selectedTime === slot.value ? "active" : ""}`}
+              aria-label={`Selecionar horario ${slot.value}`}
+              disabled={slot.disabled || isLoading}
+              onClick={() => onSelectTime(slot.value)}
+              type="button"
+            >
+              <span>{slot.value}</span>
+            </button>
+          ))
+        ) : (
+          <p className="booking-empty-slots">Sem slots neste periodo.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ClientForm({
+  clientName,
+  onClientNameChange,
+  clientWhatsapp,
+  onClientWhatsappChange,
+  notes,
+  onNotesChange,
+  fieldErrors
+}) {
+  return (
+    <div className="form-grid booking-form-grid">
+      <label>
+        Nome
+        <input value={clientName} onChange={(event) => onClientNameChange(event.target.value)} />
+        {fieldErrors.clientName ? <span className="field-error">{fieldErrors.clientName}</span> : null}
+      </label>
+      <label>
+        WhatsApp
+        <input
+          type="tel"
+          inputMode="numeric"
+          maxLength={20}
+          placeholder="(92) 99999-9999"
+          value={clientWhatsapp}
+          onChange={(event) => onClientWhatsappChange(event.target.value)}
+        />
+        {fieldErrors.clientWhatsapp ? <span className="field-error">{fieldErrors.clientWhatsapp}</span> : null}
+      </label>
+      <label className="full">
+        Observacoes do atendimento
+        <textarea value={notes} onChange={(event) => onNotesChange(event.target.value)} />
+      </label>
+    </div>
+  );
+}
+
+function BookingSummary({
+  selectedBarber,
+  summaryServices,
+  selectedDate,
+  selectedTime,
+  totals,
+  confirmation,
+  onReset,
+  onViewChange
+}) {
+  return (
+    <>
+      <div className="booking-summary-collapsed">
+        <strong>{selectedBarber?.name || "-"}</strong>
+        <span>{summaryServices || "Selecione servicos"}</span>
+        <span>
+          {formatLongDate(selectedDate)} • {selectedTime || "Sem horario"}
+        </span>
+        <span>{formatCurrency(totals.subtotal)}</span>
+      </div>
+
+      {confirmation ? (
+        <motion.div
+          className="confirmation-box booking-confirmation-inline"
+          initial={{ opacity: 0, scale: 0.96, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.34, ease: "easeOut" }}
+        >
+          <div className="confirmation-top">
+            <span className="mini-badge">Confirmado</span>
+            <strong>{confirmation.id}</strong>
+          </div>
+          <div className="confirmation-check">✓</div>
+          <p>
+            Reserva confirmada para {formatLongDate(confirmation.date)} as {confirmation.startTime} com{" "}
+            {confirmation.barber?.name}.
+          </p>
+
+          {/* ALTERACAO: a confirmacao passa a expor os atalhos de WhatsApp antes do retorno ao hero. */}
+          <div className="booking-step-actions">
+            {confirmation.clientWhatsappLink ? (
+              <a
+                className="primary-button"
+                aria-label="Enviar confirmacao para o cliente no WhatsApp"
+                href={confirmation.clientWhatsappLink}
+                target="_blank"
+                rel="noreferrer"
+              >
+                WhatsApp do cliente
+              </a>
+            ) : null}
+
+            {confirmation.barberWhatsappLink ? (
+              <a
+                className="secondary-button"
+                aria-label="Avisar barbeiro pelo WhatsApp"
+                href={confirmation.barberWhatsappLink}
+                target="_blank"
+                rel="noreferrer"
+              >
+                WhatsApp do barbeiro
+              </a>
+            ) : null}
+          </div>
+
+          {/* ALTERACAO: CTA de retorno finaliza a jornada e limpa o formulario antes de voltar ao hero. */}
+          <BackButton
+            onClick={() => {
+              onReset?.();
+              onViewChange?.("hero");
+            }}
+            label="Voltar à página inicial"
+          />
+        </motion.div>
+      ) : null}
+    </>
+  );
+}
 
 /**
  * @param {any} props
  */
 export function BookingView(props) {
-  const [currentStep, setCurrentStep] = useState(0); const [direction, setDirection] = useState(1); const [advancePressed, setAdvancePressed] = useState(false); const slotsByPeriod = useMemo(() => groupSlotsByPeriod(props.availableSlots), [props.availableSlots]); const canAdvance = [Boolean(props.selectedBarberId), props.selectedServiceIds.length > 0, Boolean(props.selectedTime), props.isBookingReady];
-  const goToStep = (nextStep) => { setDirection(nextStep > currentStep ? 1 : -1); setCurrentStep(nextStep); };
-  const advance = () => { if (currentStep < 3 && canAdvance[currentStep]) { setAdvancePressed(true); window.setTimeout(() => setAdvancePressed(false), 100); goToStep(currentStep + 1); } };
-  const actionBar = (backLabel, onBack, nextLabel, onNext, disabled) => <div className="booking-step-actions"><button className="secondary-button" aria-label={backLabel} onClick={onBack} type="button">{backLabel}</button><button className="primary-button" data-pressed={advancePressed} aria-label={nextLabel} onClick={onNext} type="button" disabled={disabled}>{nextLabel}</button></div>;
-  return <section className="booking-wizard-shell"><div className="glass-card booking-wizard-card"><Stepper steps={props.bookingProgress.steps} currentStep={currentStep} onStepChange={(nextStep) => { if (nextStep <= currentStep || canAdvance[currentStep]) goToStep(nextStep); }} /><StepFrame direction={direction} stepKey={`step-${currentStep}`}>{currentStep === 0 ? <div className="booking-step-content"><div className="booking-step-head"><span className="mini-badge">Passo 1</span><h2>Escolha seu barbeiro</h2><p>{props.bookingStatusMessage}</p></div><BarberGrid barbers={props.barbers} isLoading={props.isLoading} selectedBarberId={props.selectedBarberId} onSelectBarber={props.onSelectBarber} availableSlots={props.availableSlots} />{props.fieldErrors.selectedBarberId ? <p className="field-error">{props.fieldErrors.selectedBarberId}</p> : null}{actionBar("Reiniciar", props.onResetBooking, "Avancar", advance, !canAdvance[0])}</div> : null}{currentStep === 1 ? <div className="booking-step-content"><div className="booking-step-head"><span className="mini-badge">Passo 2</span><h2>Monte seu atendimento</h2><p>Escolha os servicos que melhor constroem o seu visual.</p></div><ServiceGrid bookingServices={props.bookingServices} isLoading={props.isLoading} selectedServiceIds={props.selectedServiceIds} onToggleService={props.onToggleService} />{props.fieldErrors.selectedServiceIds ? <p className="field-error">{props.fieldErrors.selectedServiceIds}</p> : null}<div className="booking-summary-collapsed"><strong>Total</strong><span>{formatCurrency(props.totals.subtotal)} • {props.totals.totalDuration} min</span></div>{actionBar("Voltar", () => goToStep(0), "Avancar", advance, !canAdvance[1])}</div> : null}{currentStep === 2 ? <div className="booking-step-content"><div className="booking-step-head"><span className="mini-badge">Passo 3</span><h2>Defina o melhor horario</h2><p>Selecione a data e reserve o encaixe ideal para o seu atendimento.</p></div><DatePicker dateOptions={props.dateOptions} selectedDate={props.selectedDate} onSelectDate={props.onSelectDate} /><div className="booking-time-periods"><TimeGrid title="Manha" slots={slotsByPeriod.morning} selectedTime={props.selectedTime} recommendedSlots={props.recommendedSlots} onSelectTime={props.onSelectTime} isLoading={props.isLoading} /><TimeGrid title="Tarde" slots={slotsByPeriod.afternoon} selectedTime={props.selectedTime} recommendedSlots={props.recommendedSlots} onSelectTime={props.onSelectTime} isLoading={props.isLoading} /></div>{props.fieldErrors.selectedTime ? <p className="field-error">{props.fieldErrors.selectedTime}</p> : null}{actionBar("Voltar", () => goToStep(1), "Avancar", advance, !canAdvance[2])}</div> : null}{currentStep === 3 ? <div className="booking-step-content"><div className="booking-step-head"><span className="mini-badge">Passo 4</span><h2>Feche sua reserva</h2><p>{props.bookingMomentLabel}</p></div><BookingSummary selectedBarber={props.selectedBarber} summaryServices={props.summaryServices} selectedDate={props.selectedDate} selectedTime={props.selectedTime} totals={props.totals} confirmation={props.confirmation} /><ClientForm clientName={props.clientName} onClientNameChange={props.onClientNameChange} clientWhatsapp={props.clientWhatsapp} onClientWhatsappChange={props.onClientWhatsappChange} notes={props.notes} onNotesChange={props.onNotesChange} fieldErrors={props.fieldErrors} /><div className="booking-step-actions"><button className="secondary-button" aria-label="Voltar para etapa anterior" onClick={() => goToStep(2)} type="button">Voltar</button><button className="primary-button" aria-label="Confirmar reserva" onClick={async () => { const result = await props.onConfirmBooking(); if (result?.ok) { setDirection(-1); setCurrentStep(0); props.onBookingConfirmed?.(); } }} type="button" disabled={props.isSaving || props.isLoading}>{props.isSaving ? "Salvando..." : "Confirmar reserva"}</button></div></div> : null}</StepFrame></div></section>;
+  const [currentStep, setCurrentStep] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [advancePressed, setAdvancePressed] = useState(false);
+  const slotsByPeriod = useMemo(() => groupSlotsByPeriod(props.availableSlots), [props.availableSlots]);
+  const canAdvance = [
+    Boolean(props.selectedBarberId),
+    props.selectedServiceIds.length > 0,
+    Boolean(props.selectedTime),
+    props.isBookingReady
+  ];
+
+  const goToStep = (nextStep) => {
+    setDirection(nextStep > currentStep ? 1 : -1);
+    setCurrentStep(nextStep);
+  };
+
+  const advance = () => {
+    if (currentStep < 3 && canAdvance[currentStep]) {
+      setAdvancePressed(true);
+      window.setTimeout(() => setAdvancePressed(false), 100);
+      goToStep(currentStep + 1);
+    }
+  };
+
+  const actionBar = (backLabel, onBack, nextLabel, onNext, disabled) => (
+    <div className="booking-step-actions">
+      <button className="secondary-button" aria-label={backLabel} onClick={onBack} type="button">
+        {backLabel}
+      </button>
+      <button
+        className="primary-button"
+        data-pressed={advancePressed}
+        aria-label={nextLabel}
+        onClick={onNext}
+        type="button"
+        disabled={disabled}
+      >
+        {nextLabel}
+      </button>
+    </div>
+  );
+
+  return (
+    <section className="booking-wizard-shell">
+      <div className="glass-card booking-wizard-card">
+        {/* ALTERACAO: retorno para o hero fica sempre visivel, inclusive em mobile com sticky. */}
+        <BackButton onClick={() => props.onViewChange?.("hero")} label="Início" />
+
+        <Stepper
+          steps={props.bookingProgress.steps}
+          currentStep={currentStep}
+          onStepChange={(nextStep) => {
+            if (nextStep <= currentStep || canAdvance[currentStep]) {
+              goToStep(nextStep);
+            }
+          }}
+        />
+
+        <StepFrame direction={direction} stepKey={`step-${currentStep}`}>
+          {currentStep === 0 ? (
+            <div className="booking-step-content">
+              <div className="booking-step-head">
+                <span className="mini-badge">Passo 1</span>
+                <h2>Escolha seu barbeiro</h2>
+                <p>{props.bookingStatusMessage}</p>
+              </div>
+
+              <BarberGrid
+                barbers={props.barbers}
+                isLoading={props.isLoading}
+                selectedBarberId={props.selectedBarberId}
+                onSelectBarber={props.onSelectBarber}
+                availableSlots={props.availableSlots}
+              />
+
+              {props.fieldErrors.selectedBarberId ? (
+                <p className="field-error">{props.fieldErrors.selectedBarberId}</p>
+              ) : null}
+
+              {actionBar("Reiniciar", props.onResetBooking, "Avancar", advance, !canAdvance[0])}
+            </div>
+          ) : null}
+
+          {currentStep === 1 ? (
+            <div className="booking-step-content">
+              <div className="booking-step-head">
+                <span className="mini-badge">Passo 2</span>
+                <h2>Monte seu atendimento</h2>
+                <p>Escolha os servicos que melhor constroem o seu visual.</p>
+              </div>
+
+              <ServiceGrid
+                bookingServices={props.bookingServices}
+                isLoading={props.isLoading}
+                selectedServiceIds={props.selectedServiceIds}
+                onToggleService={props.onToggleService}
+              />
+
+              {props.fieldErrors.selectedServiceIds ? (
+                <p className="field-error">{props.fieldErrors.selectedServiceIds}</p>
+              ) : null}
+
+              <div className="booking-summary-collapsed">
+                <strong>Total</strong>
+                <span>
+                  {formatCurrency(props.totals.subtotal)} • {props.totals.totalDuration} min
+                </span>
+              </div>
+
+              {actionBar("Voltar", () => goToStep(0), "Avancar", advance, !canAdvance[1])}
+            </div>
+          ) : null}
+
+          {currentStep === 2 ? (
+            <div className="booking-step-content">
+              <div className="booking-step-head">
+                <span className="mini-badge">Passo 3</span>
+                <h2>Defina o melhor horario</h2>
+                <p>Selecione a data e reserve o encaixe ideal para o seu atendimento.</p>
+              </div>
+
+              <DatePicker
+                dateOptions={props.dateOptions}
+                selectedDate={props.selectedDate}
+                onSelectDate={props.onSelectDate}
+              />
+
+              <div className="booking-time-periods">
+                <TimeGrid
+                  title="Manha"
+                  slots={slotsByPeriod.morning}
+                  selectedTime={props.selectedTime}
+                  recommendedSlots={props.recommendedSlots}
+                  onSelectTime={props.onSelectTime}
+                  isLoading={props.isLoading}
+                />
+                <TimeGrid
+                  title="Tarde"
+                  slots={slotsByPeriod.afternoon}
+                  selectedTime={props.selectedTime}
+                  recommendedSlots={props.recommendedSlots}
+                  onSelectTime={props.onSelectTime}
+                  isLoading={props.isLoading}
+                />
+              </div>
+
+              {props.fieldErrors.selectedTime ? <p className="field-error">{props.fieldErrors.selectedTime}</p> : null}
+
+              {actionBar("Voltar", () => goToStep(1), "Avancar", advance, !canAdvance[2])}
+            </div>
+          ) : null}
+
+          {currentStep === 3 ? (
+            <div className="booking-step-content">
+              <div className="booking-step-head">
+                <span className="mini-badge">Passo 4</span>
+                <h2>{props.confirmation ? "Reserva confirmada" : "Feche sua reserva"}</h2>
+                <p>
+                  {props.confirmation
+                    ? "Tudo certo. Agora voce pode avisar as partes e voltar para a pagina inicial."
+                    : props.bookingMomentLabel}
+                </p>
+              </div>
+
+              <BookingSummary
+                selectedBarber={props.selectedBarber}
+                summaryServices={props.summaryServices}
+                selectedDate={props.selectedDate}
+                selectedTime={props.selectedTime}
+                totals={props.totals}
+                confirmation={props.confirmation}
+                onReset={props.onResetBooking}
+                onViewChange={props.onViewChange}
+              />
+
+              {!props.confirmation ? (
+                <ClientForm
+                  clientName={props.clientName}
+                  onClientNameChange={props.onClientNameChange}
+                  clientWhatsapp={props.clientWhatsapp}
+                  onClientWhatsappChange={props.onClientWhatsappChange}
+                  notes={props.notes}
+                  onNotesChange={props.onNotesChange}
+                  fieldErrors={props.fieldErrors}
+                />
+              ) : null}
+
+              {!props.confirmation ? (
+                <div className="booking-step-actions">
+                  <button
+                    className="secondary-button"
+                    aria-label="Voltar para etapa anterior"
+                    onClick={() => goToStep(2)}
+                    type="button"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    className="primary-button"
+                    aria-label="Confirmar reserva"
+                    onClick={async () => {
+                      const result = await props.onConfirmBooking();
+
+                      if (result?.ok) {
+                        // ALTERACAO: mantemos o passo atual para exibir a confirmacao e seus CTAs.
+                        setDirection(1);
+                        setCurrentStep(3);
+                        props.onBookingConfirmed?.();
+                      }
+                    }}
+                    type="button"
+                    disabled={props.isSaving || props.isLoading}
+                  >
+                    {props.isSaving ? "Salvando..." : "Confirmar reserva"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </StepFrame>
+      </div>
+    </section>
+  );
 }

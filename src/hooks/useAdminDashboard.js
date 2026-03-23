@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { uploadImagemAdmin } from "../lib/admin";
 import {
   createScheduleBlock,
   deleteScheduleBlock,
   processNotificationQueue,
   resetStaffPassword,
   saveBrandSettings,
-  saveGalleryPost,
   saveStaffMember,
-  setGalleryPostActive,
   toggleStaffMemberActive,
-  updateCustomerNotes,
-  uploadMediaAsset
+  updateCustomerNotes
 } from "../lib/api";
-import { blockInitialState, dateOptions, emptyGalleryPostForm, emptyStaffForm } from "../app/constants";
+import { blockInitialState, dateOptions, emptyStaffForm } from "../app/constants";
 import {
   buildTabs,
   calculateAdminStats,
@@ -30,19 +28,19 @@ import {
 } from "../utils/experience";
 
 export function useAdminDashboard({
-  barbers,
-  appointments,
-  bookingSchedule,
-  scheduleBlocks,
-  customers,
-  notifications,
-  galleryPosts,
+  barbers = [],
+  appointments = [],
+  bookingSchedule = [],
+  scheduleBlocks = [],
+  customers = [],
+  notifications = [],
+  galleryPosts = [],
   session,
   refreshData,
   setCustomers,
-  brandConfig,
+  brandConfig = {},
   setBrandConfig,
-  brandEditor,
+  brandEditor = {},
   setBrandEditor
 }) {
   const [adminBarberFilter, setAdminBarberFilter] = useState("all");
@@ -60,9 +58,6 @@ export function useAdminDashboard({
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   const [queueFeedback, setQueueFeedback] = useState("");
   const [isSavingBrand, setIsSavingBrand] = useState(false);
-  const [galleryEditorForm, setGalleryEditorForm] = useState(emptyGalleryPostForm);
-  const [isSavingGalleryPost, setIsSavingGalleryPost] = useState(false);
-  const [galleryActionId, setGalleryActionId] = useState("");
 
   useEffect(() => {
     if (!barbers.length) {
@@ -74,10 +69,6 @@ export function useAdminDashboard({
       barberId: current.barberId || barbers[0].id
     }));
   }, [barbers]);
-
-  useEffect(() => {
-    setGalleryEditorForm((current) => (current.id ? current : galleryPosts[0] ?? emptyGalleryPostForm));
-  }, [galleryPosts]);
 
   const tabs = useMemo(() => buildTabs(session), [session]);
   const visibleWhatsappAppointments = useMemo(
@@ -126,6 +117,7 @@ export function useAdminDashboard({
     () => buildWeeklyDemandNarrative(occupancyHeatmap),
     [occupancyHeatmap]
   );
+  void galleryPosts;
 
   async function handleCreateBlock(event) {
     event.preventDefault();
@@ -282,64 +274,14 @@ export function useAdminDashboard({
     }
 
     try {
-      const uploaded = await uploadMediaAsset(file, "branding", session);
+      const uploaded = await uploadImagemAdmin({ file, folder: "branding" });
       setBrandEditor((current) => ({
         ...current,
-        logoImagePath: uploaded.data.path,
-        logoImageUrl: uploaded.data.publicUrl
+        logoImagePath: uploaded.path,
+        logoImageUrl: uploaded.publicUrl
       }));
     } catch (error) {
       setStaffFeedback(error.message || "Nao foi possivel enviar a logo.");
-    }
-  }
-
-  async function handleSaveGalleryPost(event) {
-    event.preventDefault();
-
-    if (!galleryEditorForm.title.trim()) {
-      setStaffFeedback("Informe o titulo do post.");
-      return;
-    }
-
-    setIsSavingGalleryPost(true);
-
-    try {
-      const saved = await saveGalleryPost(galleryEditorForm, session);
-      setGalleryEditorForm(saved.data);
-      await refreshData(session);
-      setStaffFeedback("Post da galeria salvo.");
-    } catch (error) {
-      setStaffFeedback(error.message || "Nao foi possivel salvar o post.");
-    } finally {
-      setIsSavingGalleryPost(false);
-    }
-  }
-
-  async function handleToggleGalleryPostActive(post) {
-    setGalleryActionId(post.id);
-
-    try {
-      await setGalleryPostActive(post.id, !post.isActive, session);
-      await refreshData(session);
-    } finally {
-      setGalleryActionId("");
-    }
-  }
-
-  async function handleUploadGalleryImage(file) {
-    if (!file) {
-      return;
-    }
-
-    try {
-      const uploaded = await uploadMediaAsset(file, "gallery", session);
-      setGalleryEditorForm((current) => ({
-        ...current,
-        imagePath: uploaded.data.path,
-        imageUrl: uploaded.data.publicUrl
-      }));
-    } catch (error) {
-      setStaffFeedback(error.message || "Nao foi possivel enviar a imagem.");
     }
   }
 
@@ -381,10 +323,6 @@ export function useAdminDashboard({
     isProcessingQueue,
     queueFeedback,
     isSavingBrand,
-    galleryEditorForm,
-    setGalleryEditorForm,
-    isSavingGalleryPost,
-    galleryActionId,
     handleCreateBlock,
     handleDeleteBlock,
     handleSaveCustomerNotes,
@@ -395,9 +333,6 @@ export function useAdminDashboard({
     handleProcessQueue,
     handleSaveBrandSettings,
     handleUploadBrandLogo,
-    handleSaveGalleryPost,
-    handleToggleGalleryPostActive,
-    handleUploadGalleryImage,
     resetWorkspace
   };
 }

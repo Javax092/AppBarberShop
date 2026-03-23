@@ -1,6 +1,6 @@
 // ALTERACAO: versiona o cache para garantir troca limpa entre deploys.
-const SHELL_CACHE = "opaitaon-shell-v2";
-const STATIC_CACHE = "opaitaon-static-v2";
+const SHELL_CACHE = "opaitaon-shell-v3";
+const STATIC_CACHE = "opaitaon-static-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/paitaon.png", "/paion2.png", "/favicon.svg"];
 
 function isStaticAsset(requestUrl) {
@@ -23,6 +23,12 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

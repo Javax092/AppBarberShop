@@ -10,10 +10,10 @@ function AlertIcon() {
 }
 
 const heatMapColors = {
-  low: "#2A2825",
-  medium: "#7A4F1A",
-  high: "#C9A84C",
-  full: "#A0291C"
+  low: "var(--heat-low)",
+  medium: "var(--heat-medium)",
+  high: "var(--heat-high)",
+  full: "var(--heat-full)"
 };
 
 /**
@@ -54,7 +54,7 @@ export function OccupancyHeatmap({ occupancyHeatmap, scheduleConflicts }) {
           gap: 4px;
           padding: 10px;
           border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.06);
+          border: 1px solid var(--border-subtle);
         }
         .occupancy-conflicts {
           display: grid;

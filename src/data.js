@@ -5,16 +5,17 @@ export const barbers = [
     shortCode: "LC",
     role: "Master barber",
     phone: "5592999991111",
-    specialty: "Corte social refinado, acabamento preciso e atendimento de assinatura.",
+    specialty:
+      "Corte social refinado, acabamento preciso e atendimento de assinatura.",
     bio: "Indicado para quem busca imagem alinhada, corte executivo e constancia no padrao de atendimento.",
     photoKey: "heritage",
     heroTagline: "Corte social de assinatura com presenca e acabamento limpo.",
     workingHours: {
       start: "09:00",
-      end: "20:00"
+      end: "20:00",
     },
     breakRanges: [{ start: "12:00", end: "13:00" }],
-    daysOff: [0]
+    daysOff: [0],
   },
   {
     id: "luquinhas",
@@ -28,11 +29,11 @@ export const barbers = [
     heroTagline: "Acabamento moderno com desenho forte e leitura atual.",
     workingHours: {
       start: "10:00",
-      end: "21:00"
+      end: "21:00",
     },
     breakRanges: [{ start: "14:00", end: "15:00" }],
-    daysOff: [1]
-  }
+    daysOff: [1],
+  },
 ];
 
 export const services = [
@@ -44,9 +45,10 @@ export const services = [
     price: 55,
     duration: 45,
     category: "Cabelo",
-    description: "Tesoura, maquina e acabamento preciso para manter uma imagem alinhada do inicio ao fim.",
+    description:
+      "Tesoura, maquina e acabamento preciso para manter uma imagem alinhada do inicio ao fim.",
     isActive: true,
-    sortOrder: 1
+    sortOrder: 1,
   },
   {
     id: "svc-lucas-2",
@@ -56,9 +58,10 @@ export const services = [
     price: 38,
     duration: 30,
     category: "Barba",
-    description: "Contorno detalhado, toalha quente e finalizacao para uma barba mais firme e bem desenhada.",
+    description:
+      "Contorno detalhado, toalha quente e finalizacao para uma barba mais firme e bem desenhada.",
     isActive: true,
-    sortOrder: 2
+    sortOrder: 2,
   },
   {
     id: "svc-lucas-3",
@@ -68,9 +71,10 @@ export const services = [
     price: 25,
     duration: 20,
     category: "Detalhes",
-    description: "Pezinho, nuca e alinhamento rapido para manter o corte sempre limpo.",
+    description:
+      "Pezinho, nuca e alinhamento rapido para manter o corte sempre limpo.",
     isActive: true,
-    sortOrder: 3
+    sortOrder: 3,
   },
   {
     id: "svc-luquinhas-1",
@@ -80,9 +84,10 @@ export const services = [
     price: 60,
     duration: 50,
     category: "Cabelo",
-    description: "Degrade preciso com transicao limpa, textura controlada e acabamento de alto nivel.",
+    description:
+      "Degrade preciso com transicao limpa, textura controlada e acabamento de alto nivel.",
     isActive: true,
-    sortOrder: 1
+    sortOrder: 1,
   },
   {
     id: "svc-luquinhas-2",
@@ -92,9 +97,10 @@ export const services = [
     price: 92,
     duration: 80,
     category: "Combo",
-    description: "Corte, barba e finalizacao em uma sessao completa para elevar a imagem com consistencia.",
+    description:
+      "Corte, barba e finalizacao em uma sessao completa para elevar a imagem com consistencia.",
     isActive: true,
-    sortOrder: 2
+    sortOrder: 2,
   },
   {
     id: "svc-luquinhas-3",
@@ -106,8 +112,8 @@ export const services = [
     category: "Detalhes",
     description: "Alinhamento preciso para fechar o visual com mais definicao.",
     isActive: true,
-    sortOrder: 3
-  }
+    sortOrder: 3,
+  },
 ];
 
 export const sampleAppointments = [
@@ -125,7 +131,7 @@ export const sampleAppointments = [
     totalPrice: 93,
     createdAt: "2026-03-17T10:00:00-04:00",
     updatedAt: "2026-03-17T10:00:00-04:00",
-    notes: "Cliente recorrente"
+    notes: "Cliente recorrente",
   },
   {
     id: "LC-0318-02",
@@ -141,7 +147,7 @@ export const sampleAppointments = [
     totalPrice: 55,
     createdAt: "2026-03-17T10:10:00-04:00",
     updatedAt: "2026-03-17T10:10:00-04:00",
-    notes: "Primeira visita"
+    notes: "Primeira visita",
   },
   {
     id: "LQ-0318-01",
@@ -157,8 +163,8 @@ export const sampleAppointments = [
     totalPrice: 92,
     createdAt: "2026-03-17T10:20:00-04:00",
     updatedAt: "2026-03-17T10:20:00-04:00",
-    notes: ""
-  }
+    notes: "",
+  },
 ];
 
 export const scheduleBlocks = [
@@ -171,8 +177,8 @@ export const scheduleBlocks = [
     startTime: "12:00",
     endTime: "13:00",
     isAllDay: false,
-    notes: ""
-  }
+    notes: "",
+  },
 ];
 
 export const customers = [
@@ -190,7 +196,7 @@ export const customers = [
     cadenceDays: 18,
     lastAppointmentAt: "2026-03-18T09:00:00-04:00",
     firstAppointmentAt: "2025-12-01T09:00:00-04:00",
-    lastServiceNames: ["Corte de assinatura", "Barba completa"]
+    lastServiceNames: ["Corte de assinatura", "Barba completa"],
   },
   {
     id: "customer-2",
@@ -206,8 +212,8 @@ export const customers = [
     cadenceDays: 0,
     lastAppointmentAt: "2026-03-18T13:30:00-04:00",
     firstAppointmentAt: "2026-03-18T13:30:00-04:00",
-    lastServiceNames: ["Corte de assinatura"]
-  }
+    lastServiceNames: ["Corte de assinatura"],
+  },
 ];
 
 export const notificationQueue = [
@@ -224,18 +230,18 @@ export const notificationQueue = [
     scheduledFor: "2026-03-17T10:00:00-04:00",
     messageTemplate: "Oi Rafael Souza, seu horario com Lucas foi confirmado.",
     sentAt: null,
-    createdAt: "2026-03-17T10:00:00-04:00"
-  }
+    createdAt: "2026-03-17T10:00:00-04:00",
+  },
 ];
 
 export const staffMembers = [
   {
     id: "11111111-1111-1111-1111-111111111111",
-    email: "admin@opaitaon.com",
+    email: "ryanlmxxv@gmail.com",
     fullName: "Administrador",
     role: "admin",
     barberId: null,
-    isActive: true
+    isActive: true,
   },
   {
     id: "22222222-2222-2222-2222-222222222222",
@@ -243,7 +249,7 @@ export const staffMembers = [
     fullName: "Lucas",
     role: "barber",
     barberId: "lucas",
-    isActive: true
+    isActive: true,
   },
   {
     id: "33333333-3333-3333-3333-333333333333",
@@ -251,8 +257,8 @@ export const staffMembers = [
     fullName: "Luquinhas",
     role: "barber",
     barberId: "luquinhas",
-    isActive: true
-  }
+    isActive: true,
+  },
 ];
 
 export const appEventLogs = [
@@ -262,48 +268,52 @@ export const appEventLogs = [
     eventType: "booking.created",
     message: "Reserva criada com fila automatica preparada.",
     source: "web",
-    createdAt: "2026-03-17T10:00:00-04:00"
-  }
+    createdAt: "2026-03-17T10:00:00-04:00",
+  },
 ];
 
 export const galleryPosts = [
   {
     id: "post-1",
     title: "Agenda premium",
-    caption: "Reserva direta com leitura forte de marca para converter o cliente logo na entrada.",
+    caption:
+      "Reserva direta com leitura forte de marca para converter o cliente logo na entrada.",
     imageKey: "post-fade",
-    tag: "Reserva"
+    tag: "Reserva",
   },
   {
     id: "post-2",
     title: "Barba de presenca",
-    caption: "Contorno limpo, volume equilibrado e acabamento de alto nivel para uma imagem mais forte.",
+    caption:
+      "Contorno limpo, volume equilibrado e acabamento de alto nivel para uma imagem mais forte.",
     imageKey: "post-beard",
-    tag: "Barba premium"
+    tag: "Barba premium",
   },
   {
     id: "post-3",
     title: "Ambiente que vende",
-    caption: "Espaco real, atmosfera premium e uma presenca visual que aumenta a confianca na marca.",
+    caption:
+      "Espaco real, atmosfera premium e uma presenca visual que aumenta a confianca na marca.",
     imageKey: "post-classic",
-    tag: "Experiencia"
-  }
+    tag: "Experiencia",
+  },
 ];
 
 export const brandConfig = {
   logoText: "O Pai ta on",
   businessWhatsapp: "5592986202729",
   heroTitle: "O Pai ta on",
-  heroDescription: "Barbearia com imagem forte, atendimento preciso e agendamento direto para uma experiencia mais profissional do inicio ao fim.",
+  heroDescription:
+    "Barbearia com imagem forte, atendimento preciso e agendamento direto para uma experiencia mais profissional do inicio ao fim.",
   logoImagePath: "",
   logoImageUrl: "",
-  metaWebhookConfigured: false
+  metaWebhookConfigured: false,
 };
 
 export const demoStaffSession = {
   userId: "local-admin",
-  email: "admin@opaitaon.com",
+  email: "ryanlmxxv@gmail.com",
   fullName: "Administrador",
   role: "admin",
-  barberId: null
+  barberId: null,
 };

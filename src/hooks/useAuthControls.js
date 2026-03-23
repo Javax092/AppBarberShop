@@ -43,7 +43,7 @@ export function useAuthControls({ refreshData, setActiveView, resetWorkspace }) 
     try {
       const nextSession = await authenticateStaff(loginForm.email, loginForm.password);
       setLoginForm(loginInitialState);
-      setActiveView(nextSession.role === "admin" ? "admin" : "panel");
+      setActiveView("panel");
       await logAppEvent({
         eventType: "auth.login",
         message: `${nextSession.email} autenticado com sucesso`

@@ -1,30 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
-
-let clientInstance = null;
-// ALTERACAO: leitura centralizada das envs do cliente Supabase.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-export function isSupabaseConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-}
+import { isSupabaseConfigured, supabase } from "./supabase.ts";
 
 export function getSupabaseClient() {
-  if (!isSupabaseConfigured()) {
-    return null;
-  }
-
-  if (!clientInstance) {
-    clientInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    });
-  }
-
-  return clientInstance;
+  return isSupabaseConfigured() ? supabase : null;
 }
 
 export async function getActiveAuthSession() {

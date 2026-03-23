@@ -129,11 +129,11 @@ export function BarberCard({
         }
 
         .barber-card-v3__status[data-tone="available"] {
-          color: #7fe1a0;
+          color: var(--status-success);
         }
 
         .barber-card-v3__status[data-tone="upcoming"] {
-          color: #f0c472;
+          color: var(--text-accent);
         }
 
         .barber-card-v3--loading {

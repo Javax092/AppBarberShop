@@ -16,7 +16,7 @@ function CameraIcon() {
   );
 }
 
-export function GalleryStrip({ galleryPosts }) {
+export function GalleryStrip({ galleryPosts = [] }) {
   const [activePanel, setActivePanel] = useState("posts");
 
   const editorialPosts = useMemo(

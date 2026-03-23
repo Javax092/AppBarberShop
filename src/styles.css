@@ -1,38 +1,43 @@
 :root {
   color-scheme: dark;
-  --bg: #090806;
-  --panel: rgba(19, 13, 9, 0.86);
-  --panel-strong: rgba(27, 19, 13, 0.96);
-  --panel-soft: rgba(255, 244, 227, 0.04);
-  --line: rgba(255, 228, 194, 0.12);
-  --line-strong: rgba(223, 165, 76, 0.42);
-  --text: #f6eedf;
-  --muted: #b7aa96;
-  --gold: #c69137;
-  --gold-strong: #f0c472;
-  --sage: #81b0a5;
-  --green: #51c491;
-  --danger: #ff8d84;
-  --brand-accent: #c69137;
-  --brand-accent-soft: rgba(198, 145, 55, 0.18);
-  --brand-accent-strong: #f0c472;
-  --brand-support: #81b0a5;
-  --brand-support-soft: rgba(129, 176, 165, 0.18);
-  --shadow: 0 34px 110px rgba(0, 0, 0, 0.42);
+  --bg: var(--bg-page);
+  --panel: var(--bg-card);
+  --panel-strong: var(--bg-card);
+  --panel-soft: var(--bg-raised);
+  --line: var(--border-subtle);
+  --line-strong: var(--border-strong);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --gold: var(--text-accent);
+  --gold-strong: var(--text-accent);
+  --sage: var(--brand-support);
+  --green: var(--status-success);
+  --danger: var(--status-danger);
+  --brand-accent: var(--text-accent);
+  --brand-accent-soft: rgba(201, 168, 76, 0.16);
+  --brand-accent-strong: var(--text-accent);
+  --brand-support: var(--text-secondary);
+  --brand-support-soft: rgba(158, 148, 128, 0.14);
+  --shadow: var(--shadow-lg);
   font-family: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f4ede4;
-  --panel: rgba(255, 251, 245, 0.88);
-  --panel-strong: rgba(255, 255, 255, 0.96);
-  --panel-soft: rgba(94, 67, 40, 0.04);
-  --line: rgba(80, 53, 20, 0.12);
-  --line-strong: rgba(198, 145, 55, 0.3);
-  --text: #24170c;
-  --muted: #715f4a;
-  --shadow: 0 26px 70px rgba(71, 46, 20, 0.14);
+  --bg: var(--bg-page);
+  --panel: var(--bg-card);
+  --panel-strong: var(--bg-card);
+  --panel-soft: var(--bg-raised);
+  --line: var(--border-subtle);
+  --line-strong: var(--border-strong);
+  --text: var(--text-primary);
+  --muted: var(--text-secondary);
+  --brand-accent: var(--text-accent);
+  --brand-accent-soft: rgba(139, 105, 20, 0.12);
+  --brand-accent-strong: var(--text-accent);
+  --brand-support: var(--text-secondary);
+  --brand-support-soft: rgba(90, 80, 64, 0.1);
+  --shadow: var(--shadow-md);
 }
 
 * {
@@ -45,7 +50,7 @@ body {
   background:
     radial-gradient(circle at top left, var(--brand-accent-soft), transparent 28%),
     radial-gradient(circle at top right, var(--brand-support-soft), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg) 72%, #050403), var(--bg) 38%, color-mix(in srgb, var(--bg) 86%, #ffffff));
+    linear-gradient(180deg, var(--bg-page), var(--bg-page));
   color: var(--text);
 }
 
@@ -58,7 +63,7 @@ body::before {
     url("/ambiente.jpeg") center / cover no-repeat;
   opacity: 0.18;
   pointer-events: none;
-  z-index: -2;
+  z-index: -1;
 }
 
 button,
@@ -430,7 +435,7 @@ a {
 
 .auth-form small,
 .feedback-line {
-  color: #ffb7af;
+  color: var(--status-danger);
 }
 
 .tabbar {
@@ -534,13 +539,13 @@ a {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: var(--z-base);
   pointer-events: none;
 }
 
 .view-stage > * {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-card);
 }
 
 .booking-stage::before {
@@ -815,7 +820,7 @@ a {
 
 .primary-button {
   background: linear-gradient(135deg, var(--gold), var(--gold-strong));
-  color: #181008;
+  color: var(--text-on-accent);
 }
 
 .secondary-button {
@@ -832,7 +837,7 @@ a {
 
 .danger-button {
   border-color: rgba(255, 141, 132, 0.2);
-  color: #ffc0ba;
+  color: var(--status-danger);
 }
 
 .compact-button {
@@ -1006,32 +1011,32 @@ a {
 .status-pill.confirmed {
   border-color: rgba(81, 196, 145, 0.34);
   background: rgba(81, 196, 145, 0.08);
-  color: #9af0c6;
+  color: var(--status-success);
 }
 
 .status-pill.in-progress {
   border-color: rgba(240, 196, 114, 0.34);
   background: rgba(240, 196, 114, 0.09);
-  color: #f6d490;
+  color: var(--text-accent);
 }
 
 .status-pill.cancelled {
   border-color: rgba(255, 141, 132, 0.34);
   background: rgba(255, 141, 132, 0.08);
-  color: #ffbdb7;
+  color: var(--status-danger);
 }
 
 .status-pill.done,
 .status-pill.completed {
   border-color: rgba(129, 176, 165, 0.34);
   background: rgba(129, 176, 165, 0.08);
-  color: #b8e5d9;
+  color: var(--status-info);
 }
 
 .field-error {
   display: block;
   margin-top: 6px;
-  color: #ff8d84;
+  color: var(--status-danger);
   font-size: 0.82rem;
 }
 
@@ -1051,7 +1056,7 @@ a {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 50;
+  z-index: var(--z-toast);
   display: grid;
   gap: 6px;
   max-width: 360px;
@@ -1074,19 +1079,19 @@ a {
 .toast-success {
   background: rgba(23, 58, 41, 0.92);
   border-color: rgba(81, 196, 145, 0.34);
-  color: #d7f7e8;
+  color: var(--text-primary);
 }
 
 .toast-error {
   background: rgba(76, 28, 28, 0.94);
   border-color: rgba(255, 141, 132, 0.34);
-  color: #ffd7d2;
+  color: var(--text-primary);
 }
 
 .toast-info {
   background: rgba(31, 38, 54, 0.94);
   border-color: rgba(129, 176, 165, 0.34);
-  color: #dce7f0;
+  color: var(--text-primary);
 }
 
 .admin-stats {
@@ -1447,7 +1452,7 @@ a {
   border: 1px solid rgba(81, 196, 145, 0.28);
   font-size: 2rem;
   font-weight: 800;
-  color: #baf4d7;
+  color: var(--status-success);
   margin: 6px 0 14px;
 }
 
@@ -1521,7 +1526,7 @@ a {
 .booking-progress-sticky {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--z-sticky);
   padding-bottom: 12px;
   background: linear-gradient(180deg, var(--panel-strong) 82%, transparent);
 }
@@ -1741,15 +1746,15 @@ a {
 }
 
 .loyalty-badge-bronze {
-  color: #d9a170;
+  color: var(--text-secondary);
 }
 
 .loyalty-badge-prata {
-  color: #d5dfef;
+  color: var(--text-primary);
 }
 
 .loyalty-badge-ouro {
-  color: #ffd685;
+  color: var(--text-accent);
 }
 
 @keyframes confetti-bob {
@@ -1774,12 +1779,12 @@ a {
     left: 12px;
     right: 12px;
     bottom: 12px;
-    z-index: 20;
+    z-index: var(--z-bottomnav);
     margin: 0;
     padding: 10px;
     border-radius: 22px;
     border: 1px solid var(--line);
-    background: rgba(12, 9, 6, 0.92);
+    background: var(--bg-card);
     backdrop-filter: blur(24px);
   }
 

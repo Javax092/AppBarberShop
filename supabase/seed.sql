@@ -1,138 +1,163 @@
--- ALTERACAO: seed inicial dos barbeiros atuais.
+-- Seed alinhado ao schema atual.
+-- Crie os usuarios pelo Supabase Auth/Dashboard e depois associe os perfis em public.staff_profiles.
+
 insert into public.barbers (
   id,
   name,
-  short_code,
-  role_title,
-  phone,
-  specialty,
   bio,
-  photo_key,
-  hero_tagline,
-  working_start,
-  working_end,
-  days_off,
-  break_ranges,
-  is_active,
-  sort_order
+  phone,
+  avatar_url,
+  specialties,
+  is_active
 ) values
   (
-    'lucas',
+    '7b3e77c1-d3ae-4c2b-9d77-10df7a10c001',
     'Lucas',
-    'LC',
-    'Master barber',
-    '5592999991111',
     'Corte social refinado, acabamento preciso e atendimento de assinatura.',
-    'Indicado para quem busca imagem alinhada, corte executivo e constancia no padrao de atendimento.',
-    'heritage',
-    'Corte social de assinatura com presenca e acabamento limpo.',
-    '09:00',
-    '20:00',
-    array[0]::smallint[],
-    '[{"start":"12:00","end":"13:00"}]'::jsonb,
-    true,
-    1
+    '5592999991111',
+    null,
+    array['Corte social', 'Acabamento executivo', 'Barba'],
+    true
   ),
   (
-    'luquinhas',
+    '7b3e77c1-d3ae-4c2b-9d77-10df7a10c002',
     'Luquinhas',
-    'LQ',
-    'Style specialist',
-    '5592999992222',
     'Visagismo, barba premium e leitura moderna de estilo.',
-    'Ideal para transformacao completa, barba marcada e servicos de detalhe com linguagem atual.',
-    'editorial',
-    'Acabamento moderno com desenho forte e leitura atual.',
-    '10:00',
-    '21:00',
-    array[1]::smallint[],
-    '[{"start":"14:00","end":"15:00"}]'::jsonb,
-    true,
-    2
-  );
+    '5592999992222',
+    null,
+    array['Fade', 'Barba premium', 'Visagismo'],
+    true
+  )
+on conflict (id) do update
+set
+  name = excluded.name,
+  bio = excluded.bio,
+  phone = excluded.phone,
+  avatar_url = excluded.avatar_url,
+  specialties = excluded.specialties,
+  is_active = excluded.is_active;
 
--- ALTERACAO: seed inicial dos servicos atuais.
 insert into public.services (
   id,
-  barber_id,
   name,
-  badge,
-  price,
-  duration,
-  category,
   description,
+  price,
+  duration_minutes,
+  category,
+  image_url,
   is_active,
-  sort_order
+  featured
 ) values
   (
-    'svc-lucas-1',
-    'lucas',
+    '5d1c6a76-2ec0-49a9-bb96-10df7a10c101',
     'Corte de assinatura',
-    'Mais reservado',
+    'Tesoura, maquina e acabamento preciso para manter uma imagem alinhada do inicio ao fim.',
     55.00,
     45,
     'Cabelo',
-    'Tesoura, maquina e acabamento preciso para manter uma imagem alinhada do inicio ao fim.',
+    null,
     true,
-    1
+    true
   ),
   (
-    'svc-lucas-2',
-    'lucas',
+    '5d1c6a76-2ec0-49a9-bb96-10df7a10c102',
     'Barba completa',
-    'Toalha quente',
+    'Contorno detalhado, toalha quente e finalizacao para uma barba mais firme e bem desenhada.',
     38.00,
     30,
     'Barba',
-    'Contorno detalhado, toalha quente e finalizacao para uma barba mais firme e bem desenhada.',
+    null,
     true,
-    2
+    false
   ),
   (
-    'svc-lucas-3',
-    'lucas',
-    'Acabamento executivo',
-    'Manutencao',
-    25.00,
-    20,
-    'Detalhes',
-    'Pezinho, nuca e alinhamento rapido para manter o corte sempre limpo.',
-    true,
-    3
-  ),
-  (
-    'svc-luquinhas-1',
-    'luquinhas',
+    '5d1c6a76-2ec0-49a9-bb96-10df7a10c103',
     'Fade de assinatura',
-    'Alta procura',
+    'Degrade preciso com transicao limpa, textura controlada e acabamento de alto nivel.',
     60.00,
     50,
     'Cabelo',
-    'Degrade preciso com transicao limpa, textura controlada e acabamento de alto nivel.',
+    null,
     true,
-    1
+    true
   ),
   (
-    'svc-luquinhas-2',
-    'luquinhas',
+    '5d1c6a76-2ec0-49a9-bb96-10df7a10c104',
     'Combo de presenca',
-    'Experiencia completa',
+    'Corte, barba e finalizacao em uma sessao completa para elevar a imagem com consistencia.',
     92.00,
     80,
     'Combo',
-    'Corte, barba e finalizacao em uma sessao completa para elevar a imagem com consistencia.',
+    null,
     true,
-    2
-  ),
+    false
+  )
+on conflict (id) do update
+set
+  name = excluded.name,
+  description = excluded.description,
+  price = excluded.price,
+  duration_minutes = excluded.duration_minutes,
+  category = excluded.category,
+  image_url = excluded.image_url,
+  is_active = excluded.is_active,
+  featured = excluded.featured;
+
+delete from public.barber_availability
+where barber_id in (
+  '7b3e77c1-d3ae-4c2b-9d77-10df7a10c001',
+  '7b3e77c1-d3ae-4c2b-9d77-10df7a10c002'
+);
+
+insert into public.barber_availability (
+  barber_id,
+  day_of_week,
+  start_time,
+  end_time,
+  slot_interval_minutes,
+  is_active
+) values
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c001', 1, '09:00', '19:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c001', 2, '09:00', '19:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c001', 3, '09:00', '19:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c001', 4, '09:00', '19:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c001', 5, '09:00', '19:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c002', 1, '10:00', '20:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c002', 2, '10:00', '20:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c002', 3, '10:00', '20:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c002', 4, '10:00', '20:00', 30, true),
+  ('7b3e77c1-d3ae-4c2b-9d77-10df7a10c002', 5, '10:00', '20:00', 30, true)
+;
+
+insert into public.promotions (
+  id,
+  title,
+  description,
+  discount_percent,
+  service_id,
+  starts_at,
+  ends_at,
+  image_url,
+  is_active
+) values
   (
-    'svc-luquinhas-3',
-    'luquinhas',
-    'Sobrancelha alinhada',
-    'Detalhe fino',
-    18.00,
-    20,
-    'Detalhes',
-    'Alinhamento preciso para fechar o visual com mais definicao.',
-    true,
-    3
-  );
+    '9c4fd5da-6f32-4c58-85b2-10df7a10c201',
+    'Semana do fade',
+    'Desconto especial para corte fade durante a campanha atual.',
+    15,
+    '5d1c6a76-2ec0-49a9-bb96-10df7a10c103',
+    timezone('utc', now()) - interval '1 day',
+    timezone('utc', now()) + interval '14 days',
+    null,
+    true
+  )
+on conflict (id) do update
+set
+  title = excluded.title,
+  description = excluded.description,
+  discount_percent = excluded.discount_percent,
+  service_id = excluded.service_id,
+  starts_at = excluded.starts_at,
+  ends_at = excluded.ends_at,
+  image_url = excluded.image_url,
+  is_active = excluded.is_active;

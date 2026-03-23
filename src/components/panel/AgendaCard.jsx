@@ -77,7 +77,9 @@ export function AgendaCard({
 
         .agenda-card-v2__body {
           position: relative;
-          z-index: 1;
+          /* CORRECAO: card usa a escala global de camadas em vez de numero solto. */
+          /* MOTIVO: isso evita disputar stack com dropdowns, sticky headers e bottom nav. */
+          z-index: var(--z-card);
           display: grid;
           gap: var(--space-4);
           padding: var(--space-4);

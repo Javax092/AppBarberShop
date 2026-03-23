@@ -2,12 +2,12 @@
 import { formatCurrency } from "../../utils/schedule";
 import { getFavoriteServices, getLoyaltyProfile } from "../../utils/experience";
 
-const tierColor = { diamond: "#C9A84C", gold: "#E8C97A", silver: "#9E9480", bronze: "#5A5040" };
+const tierTone = { diamond: "accent", gold: "accent", silver: "secondary", bronze: "secondary" };
 
 function mapTier(loyalty) {
-  if (loyalty.tier === "ouro") return { label: "Diamond", color: tierColor.diamond };
-  if (loyalty.tier === "prata") return { label: "Silver", color: tierColor.silver };
-  return { label: "Bronze", color: tierColor.bronze };
+  if (loyalty.tier === "ouro") return { label: "Diamond", tone: tierTone.diamond };
+  if (loyalty.tier === "prata") return { label: "Silver", tone: tierTone.silver };
+  return { label: "Bronze", tone: tierTone.bronze };
 }
 
 /**
@@ -55,7 +55,7 @@ export function CrmPanel({
           padding: 18px;
           border-radius: 24px;
           border: 1px solid var(--border-soft);
-          background: rgba(255,255,255,0.03);
+          background: var(--bg-raised);
         }
         .crm-panel__grid {
           display: grid;
@@ -70,7 +70,15 @@ export function CrmPanel({
         .crm-panel__metric {
           padding: 10px;
           border-radius: 16px;
-          background: rgba(255,255,255,0.04);
+          background: var(--bg-card);
+        }
+        .crm-panel__tier-tag[data-tone="accent"] {
+          background: var(--text-accent);
+          color: var(--text-on-accent);
+        }
+        .crm-panel__tier-tag[data-tone="secondary"] {
+          background: var(--bg-raised);
+          color: var(--text-primary);
         }
       `}</style>
 
@@ -109,7 +117,9 @@ export function CrmPanel({
                   <strong>{customer.fullName}</strong>
                   <div className="actions-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <span>{customer.whatsapp}</span>
-                    <span className="tag" style={{ background: tier.color, color: "#120D09", borderColor: "transparent" }}>{tier.label}</span>
+                    <span className="tag crm-panel__tier-tag" data-tone={tier.tone} style={{ borderColor: "transparent" }}>
+                      {tier.label}
+                    </span>
                   </div>
                 </div>
                 <div className="crm-panel__metrics">
