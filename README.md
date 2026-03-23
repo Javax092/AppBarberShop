@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # O Pai ta on
 
 App React para barbearia com:
@@ -111,3 +112,6 @@ O banco de producao precisa respeitar este fluxo:
 - usuarios criados pelo Supabase Auth
 - `staff_profiles` sincronizado com os UUIDs reais do Auth
 - Edge Functions configuradas com `SUPABASE_SERVICE_ROLE_KEY`
+=======
+# AppBarberShop
+>>>>>>> 417865aa35aa8261735b769077b4d20ceb342cd2
