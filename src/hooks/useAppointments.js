@@ -120,6 +120,11 @@ export function useAppointments() {
   }, []);
 
   const updateStatus = useCallback(async (id, status) => {
+    const allowedStatuses = new Set(["pending", "confirmed", "cancelled", "completed"]);
+    if (!allowedStatuses.has(status)) {
+      throw new Error("Status de agendamento invalido.");
+    }
+
     if (!isSupabaseConfigured()) {
       throw new Error("Configure o Supabase para atualizar agendamentos.");
     }

@@ -4,7 +4,7 @@ import type { Agendamento, AuthProfile, CreateAppointmentInput, DashboardResumo,
 import { listBarbeiros } from "./barbeiros.ts";
 import { listServicos } from "./catalogo.ts";
 import { listPromocoes } from "./promocoes.ts";
-import { supabase } from "./supabase.ts";
+import { assertSupabaseConfigured, supabase } from "./supabase.ts";
 
 interface AppointmentRow {
   id: string;
@@ -30,6 +30,61 @@ interface BarberDashboardRow {
   estimated_revenue: number;
 }
 
+const STATUS_LABELS: Record<StatusAgendamento, string> = {
+  pending: "Pendente",
+  confirmed: "Confirmado",
+  cancelled: "Cancelado",
+  completed: "Concluido"
+};
+
+const LEGACY_STATUS_MAP: Record<string, StatusAgendamento> = {
+  pending: "pending",
+  pendente: "pending",
+  confirmed: "confirmed",
+  confirmado: "confirmed",
+  cancelled: "cancelled",
+  cancelado: "cancelled",
+  completed: "completed",
+  concluido: "completed",
+  concluído: "completed",
+  finalized: "completed",
+  finalizado: "completed",
+  done: "completed"
+};
+
+export function normalizeStatusAgendamento(status: string | null | undefined): StatusAgendamento {
+  const normalized = LEGACY_STATUS_MAP[(status ?? "").trim().toLowerCase()];
+  return normalized ?? "pending";
+}
+
+export function getStatusAgendamentoLabel(status: string | null | undefined) {
+  return STATUS_LABELS[normalizeStatusAgendamento(status)];
+}
+
+export function getAllowedStatusActions(currentStatus: StatusAgendamento) {
+  return {
+    canConfirm: currentStatus === "pending",
+    canCancel: currentStatus === "pending" || currentStatus === "confirmed",
+    canComplete: currentStatus === "confirmed"
+  };
+}
+
+export function assertStatusTransition(currentStatus: StatusAgendamento, nextStatus: StatusAgendamento) {
+  const { canCancel, canComplete, canConfirm } = getAllowedStatusActions(currentStatus);
+
+  if (nextStatus === "confirmed" && !canConfirm) {
+    throw new Error("Somente agendamentos pendentes podem ser confirmados.");
+  }
+
+  if (nextStatus === "cancelled" && !canCancel) {
+    throw new Error("Nao e possivel cancelar um agendamento concluido ou ja cancelado.");
+  }
+
+  if (nextStatus === "completed" && !canComplete) {
+    throw new Error("Somente agendamentos confirmados podem ser concluidos.");
+  }
+}
+
 function mapAppointment(row: AppointmentRow): Agendamento {
   return {
     id: row.id,
@@ -41,12 +96,46 @@ function mapAppointment(row: AppointmentRow): Agendamento {
     appointmentDate: row.appointment_date,
     startTime: row.start_time,
     endTime: row.end_time,
-    status: row.status,
+    status: normalizeStatusAgendamento(row.status),
     notes: row.notes,
     totalPrice: Number(row.total_price),
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+async function getAgendamentoAtual(id: string, sessionProfile?: AuthProfile | null) {
+  if (sessionProfile?.authMode === "app_users") {
+    const appointments = await listAgendamentosForAppUser(sessionProfile, { status: "all" });
+    const appointment = appointments.find((item) => item.id === id);
+
+    if (!appointment) {
+      throw new Error("Agendamento nao encontrado para este barbeiro.");
+    }
+
+    return appointment;
+  }
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("id, status")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      throw new Error("Agendamento nao encontrado.");
+    }
+
+    throw new Error(error.message);
+  }
+
+  const appointment = data as { id: string; status: StatusAgendamento };
+
+  return {
+    id: appointment.id,
+    status: normalizeStatusAgendamento(appointment.status)
   };
 }
 
@@ -88,6 +177,7 @@ export async function listAgendamentos(filters?: {
   date?: string;
   status?: StatusAgendamento | "all";
 }, sessionProfile?: AuthProfile | null) {
+  assertSupabaseConfigured();
   if (sessionProfile?.authMode === "app_users") {
     return listAgendamentosForAppUser(sessionProfile, filters);
   }
@@ -119,6 +209,7 @@ export async function listAgendaHoje(barberId?: string, sessionProfile?: AuthPro
 }
 
 export async function listProximosAgendamentos(barberId?: string, sessionProfile?: AuthProfile | null) {
+  assertSupabaseConfigured();
   if (sessionProfile?.authMode === "app_users") {
     const today = format(new Date(), "yyyy-MM-dd");
     return listAgendamentosForAppUser(sessionProfile, { barberId, status: "all" }).then((items) =>
@@ -148,6 +239,7 @@ export async function listProximosAgendamentos(barberId?: string, sessionProfile
 }
 
 export async function createAgendamento(input: CreateAppointmentInput) {
+  assertSupabaseConfigured();
   const { data, error } = await supabase.rpc("create_public_appointment", {
     input_barber_id: input.barberId,
     input_service_id: input.serviceId,
@@ -171,6 +263,10 @@ export async function createAgendamento(input: CreateAppointmentInput) {
 }
 
 export async function updateStatusAgendamento(id: string, status: StatusAgendamento, sessionProfile?: AuthProfile | null) {
+  assertSupabaseConfigured();
+  const currentAppointment = await getAgendamentoAtual(id, sessionProfile);
+  assertStatusTransition(currentAppointment.status, status);
+
   if (sessionProfile?.authMode === "app_users") {
     const { error } = await supabase.rpc("update_barber_appointment_status_app_user", {
       input_email: sessionProfile.email,
@@ -193,6 +289,7 @@ export async function updateStatusAgendamento(id: string, status: StatusAgendame
 }
 
 export async function getDashboardResumo(sessionProfile?: AuthProfile | null) {
+  assertSupabaseConfigured();
   if (sessionProfile?.authMode === "app_users") {
     const { data, error } = await supabase.rpc("get_barber_dashboard_summary_app_user", {
       input_email: sessionProfile.email,

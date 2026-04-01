@@ -1,13 +1,20 @@
+import type { ReactNode } from "react";
+
+import { getStatusAgendamentoLabel } from "../../lib/agendamentos.ts";
 import type { Agendamento } from "../../types/index.ts";
 
 export function CardAgendamento({
   agendamento,
   actionLabel,
-  onAction
+  onAction,
+  actionDisabled,
+  actions
 }: {
   agendamento: Agendamento;
   actionLabel?: string;
   onAction?: () => void;
+  actionDisabled?: boolean;
+  actions?: ReactNode;
 }) {
   const statusTone =
     agendamento.status === "confirmed"
@@ -24,7 +31,7 @@ export function CardAgendamento({
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#c9a96e]">{agendamento.appointmentDate}</p>
-            <span className={`status-badge ${statusTone}`}>{agendamento.status}</span>
+            <span className={`status-badge ${statusTone}`}>{getStatusAgendamentoLabel(agendamento.status)}</span>
           </div>
           <h3 className="mt-3 font-display text-4xl leading-none text-[#f0ede6]">{agendamento.clientName}</h3>
           <p className="mt-3 text-sm text-[rgba(240,237,230,0.62)]">
@@ -32,9 +39,11 @@ export function CardAgendamento({
           </p>
           <p className="mt-3 text-xs uppercase tracking-[0.2em] text-[rgba(240,237,230,0.42)]">Código {agendamento.publicCode}</p>
         </div>
-        {onAction && actionLabel ? (
-          <button className="btn-primary" onClick={onAction} type="button">
-            {actionLabel}
+        {actions ? (
+          <div className="flex flex-wrap gap-2">{actions}</div>
+        ) : onAction && actionLabel ? (
+          <button className="btn-primary" disabled={actionDisabled} onClick={onAction} type="button">
+            {actionDisabled ? "Atualizando..." : actionLabel}
           </button>
         ) : null}
       </div>

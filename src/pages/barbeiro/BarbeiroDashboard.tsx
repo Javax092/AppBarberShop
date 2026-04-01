@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -9,20 +10,42 @@ import { Spinner } from "../../components/ui/Spinner.tsx";
 import { useAgendamentos } from "../../hooks/useAgendamentos.ts";
 import { useAuth } from "../../hooks/useAuth.tsx";
 import { formatSupabaseError } from "../../lib/supabase.ts";
+import type { StatusAgendamento } from "../../types/index.ts";
 
 export function BarbeiroDashboard() {
   const { profile } = useAuth();
+  const [actionId, setActionId] = useState("");
   const { agendaHoje, proximos, dashboard, loading, atualizarStatus } = useAgendamentos(
     { barberId: profile?.barberId ?? undefined },
     profile
   );
 
-  async function concluir(id: string) {
+  async function handleStatusChange(id: string, nextStatus: StatusAgendamento) {
+    const confirmed =
+      nextStatus === "cancelled"
+        ? window.confirm("Deseja cancelar este agendamento? Essa acao nao remove o historico do cliente.")
+        : nextStatus === "completed"
+          ? window.confirm("Confirmar a conclusao deste atendimento?")
+          : true;
+
+    if (!confirmed) {
+      return;
+    }
+
+    setActionId(id);
     try {
-      await atualizarStatus(id, "completed");
-      toast.success("Agendamento concluído.");
+      await atualizarStatus(id, nextStatus);
+      toast.success(
+        nextStatus === "confirmed"
+          ? "Agendamento confirmado com sucesso."
+          : nextStatus === "cancelled"
+            ? "Agendamento cancelado com sucesso."
+            : "Atendimento concluido com sucesso."
+      );
     } catch (error) {
       toast.error(formatSupabaseError(error));
+    } finally {
+      setActionId("");
     }
   }
 
@@ -73,7 +96,13 @@ export function BarbeiroDashboard() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/40">Agenda interna</p>
             <h2 className="mt-2 font-display text-4xl text-[#f0ede6]">Agenda do dia</h2>
           </div>
-          <AgendaDiaria agendamentos={agendaHoje} onConcluir={(id) => void concluir(id)} />
+          <AgendaDiaria
+            agendamentos={agendaHoje}
+            loadingId={actionId}
+            onCancelar={(id) => void handleStatusChange(id, "cancelled")}
+            onConfirmar={(id) => void handleStatusChange(id, "confirmed")}
+            onConcluir={(id) => void handleStatusChange(id, "completed")}
+          />
         </section>
         <section className="space-y-4">
           <div>

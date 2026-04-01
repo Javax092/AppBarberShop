@@ -1,10 +1,8 @@
 import type { Session } from "@supabase/supabase-js";
 
 import type { AuthProfile, PerfilAcesso } from "../types/index.ts";
-import { PASSWORD_RESET_REDIRECT, recoverFromSupabaseSessionError, supabase } from "./supabase.ts";
+import { PASSWORD_RESET_REDIRECT, ensureValidSupabaseSession, recoverFromSupabaseSessionError, supabase } from "./supabase.ts";
 
-export const HARDCODED_ADMIN_EMAIL = "ryanlmxxv@gmail.com";
-export const HARDCODED_ADMIN_PASSWORD = "904721Rl";
 const FALLBACK_SESSION_KEY = "appmobilebarbearia.app-user-session";
 
 interface StaffProfileRow {
@@ -160,47 +158,31 @@ function mapProfile(row: StaffProfileRow): AuthProfile {
     barberId: row.barber_id,
     isActive: row.is_active,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function isHardcodedAdminEmail(email: string | null | undefined) {
-  return (email || "").trim().toLowerCase() === HARDCODED_ADMIN_EMAIL;
-}
-
-function buildHardcodedAdminProfile(session: Session, profile?: Partial<AuthProfile>): AuthProfile {
-  const now = new Date().toISOString();
-
-  return {
-    id: session.user.id,
-    email: session.user.email?.trim().toLowerCase() || HARDCODED_ADMIN_EMAIL,
-    fullName: profile?.fullName || session.user.user_metadata?.full_name || "Administrador",
-    role: "admin",
-    phone: profile?.phone ?? null,
-    avatarUrl: profile?.avatarUrl ?? null,
-    barberId: null,
-    isActive: true,
-    createdAt: profile?.createdAt || now,
-    updatedAt: now
+    updatedAt: row.updated_at,
+    authMode: "supabase"
   };
 }
 
 export async function getSession() {
-  const attempt = async () => {
-    const { data, error } = await supabase.auth.getSession();
+  try {
+    const {
+      data: { session },
+      error
+    } = await supabase.auth.getSession();
+
     if (error) {
       throw error;
     }
 
-    return data.session;
-  };
+    if (!session) {
+      return null;
+    }
 
-  try {
-    return await attempt();
+    return await ensureValidSupabaseSession();
   } catch (error) {
     const recovered = await recoverFromSupabaseSessionError(error);
     if (recovered) {
-      return attempt();
+      return null;
     }
 
     throw new Error(error instanceof Error ? error.message : "Falha ao carregar a sessao.");
@@ -217,7 +199,7 @@ export async function getProfile(userId: string) {
   if (error) {
     if (error.code === "PGRST116") {
       throw new ProfileSyncError(
-        "Usuario autenticado, mas sem cadastro em staff_profiles. Sincronize o usuario no painel admin antes de acessar esta area."
+        "Usuario autenticado, mas sem cadastro admin ativo em staff_profiles."
       );
     }
 
@@ -236,24 +218,28 @@ export async function getProfile(userId: string) {
 }
 
 export async function getProfileForSession(session: Session) {
-  try {
-    const profile = await getProfile(session.user.id);
-
-    if (isHardcodedAdminEmail(profile.email) || isHardcodedAdminEmail(session.user.email)) {
-      return buildHardcodedAdminProfile(session, profile);
-    }
-
-    return profile;
-  } catch (error) {
-    if (isHardcodedAdminEmail(session.user.email)) {
-      return buildHardcodedAdminProfile(session);
-    }
-
-    throw error;
-  }
+  return getProfile(session.user.id);
 }
 
 export async function signInWithRole(email: string, password: string, role: PerfilAcesso) {
+  if (role === "barber") {
+    clearFallbackSession();
+
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // Best effort cleanup. Barber login nao depende do Supabase Auth.
+    }
+
+    const profile = await authenticateFallbackStaff(email, password, role);
+    return {
+      session: null,
+      profile
+    };
+  }
+
+  clearFallbackSession();
+
   let authError: Error | null = null;
   let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"] | null = null;
 
@@ -274,20 +260,6 @@ export async function signInWithRole(email: string, password: string, role: Perf
   }
 
   if (authError) {
-    const shouldFallbackToAppUsers =
-      role === "barber" &&
-      (authError.message?.includes("Database error querying schema") ||
-        authError.message?.includes("Invalid login credentials") ||
-        authError.message?.includes("unexpected_failure"));
-
-    if (shouldFallbackToAppUsers) {
-      const fallbackProfile = await authenticateFallbackStaff(email, password, role);
-      return {
-        session: null,
-        profile: fallbackProfile
-      };
-    }
-
     throw new Error(authError.message);
   }
 
@@ -297,16 +269,6 @@ export async function signInWithRole(email: string, password: string, role: Perf
   }
 
   const profile = await getProfileForSession(session);
-  const isHardcodedAdminLogin =
-    role === "admin" &&
-    isHardcodedAdminEmail(email) &&
-    password === HARDCODED_ADMIN_PASSWORD &&
-    isHardcodedAdminEmail(session.user.email);
-
-  if (isHardcodedAdminLogin) {
-    clearFallbackSession();
-    return { session, profile: buildHardcodedAdminProfile(session, profile) };
-  }
 
   if (profile.role !== role) {
     await supabase.auth.signOut();

@@ -237,7 +237,7 @@ export const notificationQueue = [
 export const staffMembers = [
   {
     id: "11111111-1111-1111-1111-111111111111",
-    email: "ryanlmxxv@gmail.com",
+    email: "admin@opaitaon.com",
     fullName: "Administrador",
     role: "admin",
     barberId: null,
@@ -312,7 +312,7 @@ export const brandConfig = {
 
 export const demoStaffSession = {
   userId: "local-admin",
-  email: "ryanlmxxv@gmail.com",
+  email: "admin@opaitaon.com",
   fullName: "Administrador",
   role: "admin",
   barberId: null,

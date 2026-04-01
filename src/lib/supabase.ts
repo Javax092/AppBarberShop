@@ -2,13 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const FALLBACK_SUPABASE_URL = "https://placeholder.supabase.co";
+const FALLBACK_SUPABASE_ANON_KEY = "placeholder-anon-key";
+const SUPABASE_CONFIG_ERROR = "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.";
 
 export function isSupabaseConfigured() {
   return Boolean(supabaseUrl && supabaseAnonKey);
 }
 
-if (!isSupabaseConfigured()) {
-  throw new Error("Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.");
+export function assertSupabaseConfigured() {
+  if (!isSupabaseConfigured()) {
+    throw new Error(SUPABASE_CONFIG_ERROR);
+  }
 }
 
 export const STORAGE_BUCKET = import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "barbershop-assets";
@@ -20,7 +25,7 @@ export const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || window.loca
 export const PUBLIC_IMAGES_BUCKET = STORAGE_BUCKET;
 export const PUBLIC_IMAGES_FOLDER = "legacy";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl || FALLBACK_SUPABASE_URL, supabaseAnonKey || FALLBACK_SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -80,6 +85,8 @@ export async function recoverFromSupabaseSessionError(error: unknown) {
 }
 
 export async function ensureValidSupabaseSession() {
+  assertSupabaseConfigured();
+
   const {
     data: { session },
     error: sessionError
@@ -149,10 +156,35 @@ export async function ensureValidSupabaseSession() {
   return refreshedData.session;
 }
 
+export async function ensureActiveAdminSession() {
+  assertSupabaseConfigured();
+  const session = await ensureValidSupabaseSession();
+
+  const { data, error } = await supabase
+    .from("staff_profiles")
+    .select("id, email, role, is_active")
+    .eq("id", session.user.id)
+    .maybeSingle<StaffProfile>();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data || data.role !== "admin" || !data.is_active) {
+    throw new Error("Sua conta autenticada nao possui permissao administrativa ativa.");
+  }
+
+  return {
+    session,
+    profile: data
+  };
+}
+
 export async function invokeSupabaseFunction<TResponse>(
   functionName: string,
   body: Record<string, unknown>
 ) {
+  assertSupabaseConfigured();
   const session = await ensureValidSupabaseSession();
 
   return supabase.functions.invoke<TResponse>(functionName, {
@@ -164,10 +196,15 @@ export async function invokeSupabaseFunction<TResponse>(
 }
 
 export function getSupabaseFunctionUrl(functionName: string) {
+  assertSupabaseConfigured();
   return `${supabaseUrl}/functions/v1/${functionName}`;
 }
 
 export function getPublicUrl(path: string | null) {
+  if (!isSupabaseConfigured()) {
+    return path;
+  }
+
   if (!path) {
     return null;
   }
@@ -181,6 +218,7 @@ export function getPublicUrl(path: string | null) {
 }
 
 export async function uploadImage(file: File, folder: string) {
+  assertSupabaseConfigured();
   await ensureValidSupabaseSession();
 
   const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";

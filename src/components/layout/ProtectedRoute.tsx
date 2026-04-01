@@ -6,9 +6,14 @@ import { Spinner } from "../ui/Spinner.tsx";
 
 export function ProtectedRoute({ role }: { role?: PerfilAcesso }) {
   const location = useLocation();
-  const { loading, session, profile } = useAuth();
+  const { authError, loading, session, profile } = useAuth();
   const hasAppUserSession = profile?.authMode === "app_users";
-  const isAuthenticated = Boolean(profile && (session || hasAppUserSession));
+  const hasRealAdminSession = Boolean(session && profile?.role === "admin" && profile?.authMode === "supabase");
+  const isAuthenticated = Boolean(profile && (role === "admin" ? hasRealAdminSession : session || hasAppUserSession));
+  const deniedMessage =
+    role === "admin" && authError
+      ? authError
+      : "Faca login para acessar esta area interna.";
 
   if (loading) {
     return (
@@ -24,7 +29,7 @@ export function ProtectedRoute({ role }: { role?: PerfilAcesso }) {
         replace
         state={{
           from: location,
-          message: "Faca login para acessar esta area interna."
+          message: deniedMessage
         }}
         to={role === "admin" ? "/admin/login" : "/barbeiro/login"}
       />

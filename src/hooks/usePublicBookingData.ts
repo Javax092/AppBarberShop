@@ -12,6 +12,7 @@ const initialState: PublicBookingSnapshot = {
 
 export function usePublicBookingData() {
   const [data, setData] = useState<PublicBookingSnapshot>(initialState);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,10 +20,15 @@ export function usePublicBookingData() {
 
     async function load() {
       setLoading(true);
+      setError("");
       try {
         const snapshot = await getPublicBookingSnapshot();
         if (active) {
           setData(snapshot);
+        }
+      } catch (nextError) {
+        if (active) {
+          setError(nextError instanceof Error ? nextError.message : "Nao foi possivel carregar os dados do agendamento.");
         }
       } finally {
         if (active) {
@@ -40,6 +46,7 @@ export function usePublicBookingData() {
 
   return {
     ...data,
+    error,
     loading
   };
 }

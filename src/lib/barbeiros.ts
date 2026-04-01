@@ -10,16 +10,22 @@ import type {
 import {
   MANAGE_BARBER_AVATAR_FUNCTION,
   MANAGE_STAFF_FUNCTION,
+  ensureActiveAdminSession,
   ensureValidSupabaseSession,
   getPublicUrl,
   getSupabaseFunctionUrl,
   invokeSupabaseFunction,
+  recoverFromSupabaseSessionError,
   supabase
 } from "./supabase.ts";
 
 interface BarberRow {
   id: string;
   name: string;
+  status?: string;
+  deleted_at?: string | null;
+  backend_user_id?: string | null;
+  created_by_admin_id?: string | null;
   bio: string;
   phone: string | null;
   avatar_url: string | null;
@@ -57,15 +63,54 @@ interface BarberAdminRow {
   id: string;
   email: string;
   full_name: string;
+  is_active: boolean;
+  status: string;
+  deleted_at?: string | null;
+  backend_user_id?: string | null;
   barbers: BarberRow | null;
 }
 
-interface ManageStaffUpsertResult {
-  error?: string;
-  staff?: {
-    id: string;
-  };
-  barberId?: string | null;
+interface BarberProfileDeleteRow {
+  id: string;
+  barber_id: string;
+  full_name: string;
+}
+
+interface ManageBarberFunctionResult {
+  success?: boolean;
+  code?: string;
+  message?: string;
+  details?: {
+    barber?: {
+      profileId: string;
+      barberId: string | null;
+      fullName: string;
+      email: string;
+      phone: string | null;
+      avatarUrl: string | null;
+      isActive: boolean;
+      status: string;
+      backendUserId: string | null;
+      barber: {
+        id: string;
+        name: string;
+        bio: string;
+        phone: string | null;
+        avatarUrl: string | null;
+        specialties: string[];
+        isActive: boolean;
+        status: string;
+      } | null;
+    };
+    profileId?: string;
+    barberId?: string | null;
+    dependencies?: {
+      appointments?: number;
+      services?: number;
+      availability?: number;
+      scheduleBlocks?: number;
+    };
+  } | null;
 }
 
 export interface UpsertBarbeiroResult {
@@ -162,7 +207,7 @@ async function extractEdgeFunctionMessage(error: unknown) {
     const statusLabel = cloned.status ? ` (HTTP ${cloned.status})` : "";
 
     if (contentType.includes("application/json")) {
-      const payload = (await cloned.json()) as { error?: string; message?: string } | string;
+      const payload = (await cloned.json()) as { error?: string; message?: string; code?: string } | string;
       const message =
         typeof payload === "string" ? payload : payload?.error ?? payload?.message ?? "";
 
@@ -183,6 +228,26 @@ async function extractEdgeFunctionMessage(error: unknown) {
 }
 
 async function throwEdgeFunctionError(error: unknown): Promise<never> {
+  const response = error instanceof Error && "context" in error ? (error as Error & { context?: Response }).context : undefined;
+  if (response?.status === 401) {
+    const recovered = await recoverFromSupabaseSessionError(new Error("Sessao expirada ao chamar Edge Function."));
+    if (recovered) {
+      throw new Error("Sua sessao expirou. Entre novamente.");
+    }
+
+    throw new Error("Sua sessao de administrador nao e valida para esta operacao. Entre novamente.");
+  }
+
+  if (response?.status === 403) {
+    const message = await extractEdgeFunctionMessage(error);
+    throw new Error(message ?? "Sua conta autenticada nao tem permissao administrativa para esta operacao.");
+  }
+
+  if (response?.status === 409) {
+    const message = await extractEdgeFunctionMessage(error);
+    throw new Error(message ?? "Nao foi possivel concluir a operacao porque existem dependencias vinculadas a este barbeiro.");
+  }
+
   const message = await extractEdgeFunctionMessage(error);
   if (message) {
     throw new Error(message);
@@ -205,7 +270,7 @@ async function callBarberAvatarManager(
   };
 
   if (sessionProfile?.authMode !== "app_users") {
-    const session = await ensureValidSupabaseSession();
+    const { session } = await ensureActiveAdminSession();
     headers.Authorization = `Bearer ${session.access_token}`;
   }
 
@@ -269,6 +334,7 @@ export async function removeBarberAvatar(profileId: string, sessionProfile?: Aut
 
 export async function listBarbeiros(includeInactive = false, barberId?: string) {
   let query = supabase.from("barbers").select("*").order("name");
+  query = query.is("deleted_at", null);
   if (!includeInactive) {
     query = query.eq("is_active", true);
   }
@@ -281,7 +347,7 @@ export async function listBarbeiros(includeInactive = false, barberId?: string) 
     await throwEdgeFunctionError(error);
   }
 
-  return data.map(mapBarber);
+  return (data ?? []).map(mapBarber);
 }
 
 export async function listDisponibilidade(barberId?: string) {
@@ -314,12 +380,11 @@ export async function listScheduleBlocks(barberId?: string) {
 }
 
 export async function listBarbeirosAdmin() {
-  await ensureValidSupabaseSession();
+  await ensureActiveAdminSession();
 
   const { data, error } = await supabase
-    .from("staff_profiles")
-    .select("id, email, full_name, barbers:barber_id (*)")
-    .eq("role", "barber")
+    .from("barber_profiles")
+    .select("id, email, full_name, is_active, status, deleted_at, backend_user_id, barbers:barber_id (*)")
     .order("full_name")
     .returns<BarberAdminRow[]>();
 
@@ -327,7 +392,7 @@ export async function listBarbeirosAdmin() {
     throw new Error(error.message);
   }
 
-  return data
+  return (data ?? [])
     .filter((item) => item.barbers)
     .map((item) => {
       const barber = mapBarber(item.barbers as BarberRow);
@@ -335,7 +400,11 @@ export async function listBarbeirosAdmin() {
         ...barber,
         profileId: item.id,
         email: item.email,
-        fullName: item.full_name
+        fullName: item.full_name,
+        isActive: item.is_active,
+        status: item.status,
+        backendUserId: item.backend_user_id ?? null,
+        deletedAt: item.deleted_at ?? null
       };
       return result;
     });
@@ -347,8 +416,10 @@ export async function upsertBarbeiro(
   sessionProfile?: AuthProfile | null
 ): Promise<UpsertBarbeiroResult> {
   const invokeUpsert = async (avatarPath: string | null | undefined, userId = payload.id, barberId = payload.barber.id) => {
-    const { data, error } = await invokeSupabaseFunction<ManageStaffUpsertResult>(MANAGE_STAFF_FUNCTION, {
-      action: "upsert",
+    await ensureActiveAdminSession();
+
+    const { data, error } = await invokeSupabaseFunction<ManageBarberFunctionResult>(MANAGE_STAFF_FUNCTION, {
+      action: userId ? "update_barber" : "create_barber",
       staff: {
         id: userId,
         email: payload.email,
@@ -374,9 +445,9 @@ export async function upsertBarbeiro(
       await throwEdgeFunctionError(error);
     }
 
-    const result = (data ?? {}) as ManageStaffUpsertResult;
-    if (result.error) {
-      throw new Error(result.error);
+    const result = (data ?? {}) as ManageBarberFunctionResult;
+    if (result.success === false) {
+      throw new Error(result.message ?? "Nao foi possivel salvar o barbeiro.");
     }
 
     return result;
@@ -384,7 +455,7 @@ export async function upsertBarbeiro(
 
   const nextAvatarPath = options?.removeAvatar ? null : normalizeStoragePath(payload.avatarUrl);
   const result = await invokeUpsert(nextAvatarPath);
-  const profileId = result.staff?.id ?? payload.id ?? "";
+  const profileId = result.details?.barber?.profileId ?? payload.id ?? "";
 
   if (!profileId) {
     throw new Error("Nao foi possivel identificar o perfil do barbeiro salvo.");
@@ -400,7 +471,7 @@ export async function upsertBarbeiro(
 
   return {
     profileId,
-    barberId: result.barberId ?? payload.barber.id ?? null
+    barberId: result.details?.barber?.barberId ?? payload.barber.id ?? null
   };
 }
 
@@ -509,11 +580,12 @@ export async function saveOwnBarberProfile(
 }
 
 export async function toggleBarbeiro(profileId: string, isActive: boolean) {
-  const { data, error } = await invokeSupabaseFunction<{ error?: string }>(MANAGE_STAFF_FUNCTION, {
-    action: "toggle-active",
+  await ensureActiveAdminSession();
+
+  const { data, error } = await invokeSupabaseFunction<ManageBarberFunctionResult>(MANAGE_STAFF_FUNCTION, {
+    action: isActive ? "reactivate_barber" : "deactivate_barber",
     staff: {
-      id: profileId,
-      isActive
+      id: profileId
     }
   });
 
@@ -521,15 +593,19 @@ export async function toggleBarbeiro(profileId: string, isActive: boolean) {
     await throwEdgeFunctionError(error);
   }
 
-  const result = data as { error?: string };
-  if (result.error) {
-    throw new Error(result.error);
+  const result = (data ?? {}) as ManageBarberFunctionResult;
+  if (result.success === false) {
+    throw new Error(result.message ?? "Nao foi possivel atualizar o barbeiro.");
   }
+
+  return result;
 }
 
 export async function resetSenhaBarbeiro(profileId: string, password: string) {
-  const { data, error } = await invokeSupabaseFunction<{ error?: string }>(MANAGE_STAFF_FUNCTION, {
-    action: "reset-password",
+  await ensureActiveAdminSession();
+
+  const { data, error } = await invokeSupabaseFunction<ManageBarberFunctionResult>(MANAGE_STAFF_FUNCTION, {
+    action: "reset_password",
     staff: {
       id: profileId,
       password
@@ -540,28 +616,60 @@ export async function resetSenhaBarbeiro(profileId: string, password: string) {
     await throwEdgeFunctionError(error);
   }
 
-  const result = data as { error?: string };
-  if (result.error) {
-    throw new Error(result.error);
+  const result = (data ?? {}) as ManageBarberFunctionResult;
+  if (result.success === false) {
+    throw new Error(result.message ?? "Nao foi possivel redefinir a senha do barbeiro.");
   }
+
+  return result;
 }
 
 export async function excluirBarbeiro(profileId: string) {
-  const { data, error } = await invokeSupabaseFunction<{ error?: string }>(MANAGE_STAFF_FUNCTION, {
-    action: "delete",
-    staff: {
-      id: profileId
+  await ensureActiveAdminSession();
+
+  const { data: profile, error: profileError } = await supabase
+    .from("barber_profiles")
+    .select("id, barber_id, full_name")
+    .eq("id", profileId)
+    .maybeSingle<BarberProfileDeleteRow>();
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  if (!profile?.barber_id) {
+    throw new Error("Barbeiro nao encontrado para exclusao.");
+  }
+
+  const { count, error: dependencyError } = await supabase
+    .from("appointments")
+    .select("id", { count: "exact", head: true })
+    .eq("barber_id", profile.barber_id);
+
+  if (dependencyError) {
+    throw new Error(dependencyError.message);
+  }
+
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      "Este barbeiro possui historico de agendamentos e nao pode ser excluido fisicamente. Desative o cadastro para manter o historico."
+    );
+  }
+
+  const { error: deleteError } = await supabase.from("barbers").delete().eq("id", profile.barber_id);
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  return {
+    success: true,
+    code: "BARBER_DELETED",
+    message: "Barbeiro excluido em definitivo.",
+    details: {
+      profileId: profile.id,
+      barberId: profile.barber_id
     }
-  });
-
-  if (error) {
-    await throwEdgeFunctionError(error);
-  }
-
-  const result = data as { error?: string };
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  } satisfies ManageBarberFunctionResult;
 }
 
 export async function upsertDisponibilidade(

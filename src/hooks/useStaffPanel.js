@@ -14,7 +14,22 @@ function getTodayDate() {
 }
 
 function getNormalizedStatus(status) {
-  return status === "completed" ? "done" : status;
+  if (status === "done") {
+    return "completed";
+  }
+
+  return status;
+}
+
+function getStatusMeta(status) {
+  const normalizedStatus = getNormalizedStatus(status);
+
+  return {
+    normalizedStatus,
+    canConfirm: normalizedStatus === "pending",
+    canComplete: normalizedStatus === "confirmed",
+    canCancel: normalizedStatus === "pending" || normalizedStatus === "confirmed"
+  };
 }
 
 export function useStaffPanel({ barbers, services, appointmentsApi, scheduleBlocks, session, refreshData, showToast }) {
@@ -188,26 +203,73 @@ export function useStaffPanel({ barbers, services, appointmentsApi, scheduleBloc
   }
 
   async function handleStatusChange(appointmentId, nextStatus) {
+    const currentAppointment = appointmentsApi.appointments.find((item) => item.id === appointmentId);
+    if (!currentAppointment) {
+      showToast?.({
+        type: "error",
+        title: "Agendamento nao encontrado",
+        message: "Atualize a lista e tente novamente."
+      });
+      return;
+    }
+
+    const { canCancel, canComplete, canConfirm } = getStatusMeta(currentAppointment.status);
+    const normalizedNextStatus = getNormalizedStatus(nextStatus);
+
+    if (normalizedNextStatus === "cancelled" && !canCancel) {
+      showToast?.({
+        type: "error",
+        title: "Acao invalida",
+        message: "Nao e possivel cancelar um agendamento concluido ou ja cancelado."
+      });
+      return;
+    }
+
+    if (normalizedNextStatus === "confirmed" && !canConfirm) {
+      showToast?.({
+        type: "error",
+        title: "Acao invalida",
+        message: "Somente agendamentos pendentes podem ser confirmados."
+      });
+      return;
+    }
+
+    if (normalizedNextStatus === "completed" && !canComplete) {
+      showToast?.({
+        type: "error",
+        title: "Acao invalida",
+        message: "Somente agendamentos confirmados podem ser concluidos."
+      });
+      return;
+    }
+
     setStatusUpdateId(appointmentId);
 
     try {
-      if (nextStatus === "cancelled") {
+      if (normalizedNextStatus === "cancelled") {
         await appointmentsApi.cancelAppointment(appointmentId);
       } else {
-        await appointmentsApi.updateStatus(appointmentId, nextStatus);
+        await appointmentsApi.updateStatus(appointmentId, normalizedNextStatus);
       }
-      await refreshData(session);
       setEditorForm((current) =>
-        current && current.id === appointmentId ? { ...current, status: nextStatus } : current
+        current && current.id === appointmentId ? { ...current, status: normalizedNextStatus } : current
       );
       showToast?.({
-        type: nextStatus === "cancelled" ? "info" : "success",
-        title: nextStatus === "cancelled" ? "Agendamento cancelado" : "Status atualizado",
+        type: normalizedNextStatus === "cancelled" ? "info" : "success",
+        title:
+          normalizedNextStatus === "cancelled"
+            ? "Agendamento cancelado"
+            : normalizedNextStatus === "confirmed"
+              ? "Agendamento confirmado"
+              : "Atendimento concluido",
         message:
-          nextStatus === "cancelled"
+          normalizedNextStatus === "cancelled"
             ? "O horario foi liberado automaticamente na agenda."
-            : "O andamento do atendimento foi atualizado."
+            : normalizedNextStatus === "confirmed"
+              ? "O cliente foi marcado como confirmado."
+              : "O atendimento foi finalizado com sucesso."
       });
+      await refreshData(session);
     } catch (error) {
       showToast?.({
         type: "error",

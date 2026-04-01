@@ -1,14 +1,6 @@
 create extension if not exists pgcrypto;
 create extension if not exists btree_gist;
 
-create or replace function public.is_hardcoded_admin()
-returns boolean
-language sql
-stable
-as $$
-  select lower(coalesce(auth.jwt() ->> 'email', '')) = 'ryanlmxxv@gmail.com';
-$$;
-
 do $$
 begin
   if not exists (select 1 from pg_type where typname = 'app_role') then
@@ -26,6 +18,31 @@ language plpgsql
 as $$
 begin
   new.updated_at = timezone('utc', now());
+  return new;
+end;
+$$;
+
+create or replace function public.guard_appointment_status_transition()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op <> 'UPDATE' or new.status = old.status then
+    return new;
+  end if;
+
+  if new.status = 'confirmed' and old.status <> 'pending' then
+    raise exception 'Somente agendamentos pendentes podem ser confirmados.';
+  end if;
+
+  if new.status = 'cancelled' and old.status not in ('pending', 'confirmed') then
+    raise exception 'Nao e possivel cancelar um agendamento concluido ou ja cancelado.';
+  end if;
+
+  if new.status = 'completed' and old.status <> 'confirmed' then
+    raise exception 'Somente agendamentos confirmados podem ser concluidos.';
+  end if;
+
   return new;
 end;
 $$;
@@ -111,8 +128,7 @@ set search_path = public
 stable
 as $$
   select
-    public.is_hardcoded_admin()
-    or exists (
+    exists (
       select 1
       from public.staff_profiles
       where id = auth.uid()
@@ -120,6 +136,8 @@ as $$
         and is_active = true
     );
 $$;
+
+drop function if exists public.is_hardcoded_admin();
 
 create or replace function public.current_barber_id()
 returns uuid
@@ -237,6 +255,7 @@ set search_path = public
 as $$
 declare
   authenticated_barber_id uuid;
+  current_status public.appointment_status;
 begin
   select barber_id
   into authenticated_barber_id
@@ -305,6 +324,7 @@ set search_path = public
 as $$
 declare
   authenticated_barber_id uuid;
+  current_status public.appointment_status;
 begin
   select barber_id
   into authenticated_barber_id
@@ -314,15 +334,34 @@ begin
     raise exception 'Credenciais invalidas para barbeiro.';
   end if;
 
+  select status
+  into current_status
+  from public.appointments
+  where id = input_appointment_id
+    and barber_id = authenticated_barber_id
+  for update;
+
+  if not found then
+    raise exception 'Agendamento nao encontrado para este barbeiro.';
+  end if;
+
+  if input_status = 'confirmed' and current_status <> 'pending' then
+    raise exception 'Somente agendamentos pendentes podem ser confirmados.';
+  end if;
+
+  if input_status = 'cancelled' and current_status not in ('pending', 'confirmed') then
+    raise exception 'Nao e possivel cancelar um agendamento concluido ou ja cancelado.';
+  end if;
+
+  if input_status = 'completed' and current_status <> 'confirmed' then
+    raise exception 'Somente agendamentos confirmados podem ser concluidos.';
+  end if;
+
   update public.appointments
   set status = input_status,
       updated_at = timezone('utc', now())
   where id = input_appointment_id
     and barber_id = authenticated_barber_id;
-
-  if not found then
-    raise exception 'Agendamento nao encontrado para este barbeiro.';
-  end if;
 end;
 $$;
 
@@ -910,6 +949,11 @@ create trigger set_appointments_updated_at
 before update on public.appointments
 for each row execute function public.set_updated_at();
 
+drop trigger if exists guard_appointments_status_transition on public.appointments;
+create trigger guard_appointments_status_transition
+before update on public.appointments
+for each row execute function public.guard_appointment_status_transition();
+
 alter table public.staff_profiles enable row level security;
 alter table public.staff_auth_credentials enable row level security;
 alter table public.barbers enable row level security;
@@ -1370,10 +1414,491 @@ with check (
   and split_part(name, '/', 2) = auth.uid()::text
 );
 
-comment on table public.staff_profiles is 'Perfis autenticados com roles admin e barber.';
+comment on table public.staff_profiles is 'Perfis autenticados via Supabase Auth para administradores.';
 comment on table public.barbers is 'Perfis publicos de barbeiros exibidos no app.';
 comment on table public.services is 'Catalogo de servicos.';
 comment on table public.promotions is 'Promocoes vinculadas a servicos.';
 comment on table public.barber_availability is 'Disponibilidade por barbeiro e dia da semana.';
 comment on table public.schedule_blocks is 'Bloqueios de agenda globais ou por barbeiro.';
 comment on table public.appointments is 'Agendamentos publicos e internos.';
+
+create table if not exists public.barber_profiles (
+  id uuid primary key default gen_random_uuid(),
+  barber_id uuid not null unique references public.barbers (id) on delete cascade,
+  full_name text not null,
+  email text not null unique,
+  phone text,
+  avatar_url text,
+  is_active boolean not null default true,
+  status text not null default 'active',
+  created_by_admin_id uuid references auth.users (id) on delete set null,
+  backend_user_id text,
+  deleted_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint barber_profiles_status_check check (status in ('active', 'inactive', 'deleted'))
+);
+
+create table if not exists public.barber_auth_credentials (
+  barber_profile_id uuid primary key references public.barber_profiles (id) on delete cascade,
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+alter table public.barbers
+  add column if not exists status text not null default 'active';
+
+alter table public.barbers
+  add column if not exists created_by_admin_id uuid references auth.users (id) on delete set null;
+
+alter table public.barbers
+  add column if not exists backend_user_id text;
+
+alter table public.barbers
+  add column if not exists deleted_at timestamptz;
+
+alter table public.barber_availability
+  alter column id set default gen_random_uuid();
+
+alter table public.schedule_blocks
+  alter column id set default gen_random_uuid();
+
+create index if not exists barber_profiles_email_idx on public.barber_profiles (email);
+create index if not exists barber_profiles_active_idx on public.barber_profiles (is_active, status);
+create index if not exists barber_auth_credentials_email_idx on public.barber_auth_credentials (email);
+
+drop trigger if exists set_barber_profiles_updated_at on public.barber_profiles;
+create trigger set_barber_profiles_updated_at
+before update on public.barber_profiles
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_barber_auth_credentials_updated_at on public.barber_auth_credentials;
+create trigger set_barber_auth_credentials_updated_at
+before update on public.barber_auth_credentials
+for each row execute function public.set_updated_at();
+
+insert into public.barber_profiles (
+  id,
+  barber_id,
+  full_name,
+  email,
+  phone,
+  avatar_url,
+  is_active,
+  status,
+  created_at,
+  updated_at
+)
+select
+  sp.id,
+  sp.barber_id,
+  sp.full_name,
+  lower(trim(sp.email)),
+  sp.phone,
+  coalesce(sp.avatar_url, b.avatar_url),
+  sp.is_active,
+  case
+    when sp.is_active then 'active'
+    else 'inactive'
+  end,
+  sp.created_at,
+  sp.updated_at
+from public.staff_profiles sp
+join public.barbers b on b.id = sp.barber_id
+where sp.role = 'barber'
+  and sp.barber_id is not null
+on conflict (id) do update
+set barber_id = excluded.barber_id,
+    full_name = excluded.full_name,
+    email = excluded.email,
+    phone = excluded.phone,
+    avatar_url = excluded.avatar_url,
+    is_active = excluded.is_active,
+    status = excluded.status,
+    updated_at = timezone('utc', now());
+
+insert into public.barber_auth_credentials (
+  barber_profile_id,
+  email,
+  password_hash,
+  created_at,
+  updated_at
+)
+select
+  sac.user_id,
+  lower(trim(sac.email)),
+  sac.password_hash,
+  sac.created_at,
+  sac.updated_at
+from public.staff_auth_credentials sac
+join public.barber_profiles bp on bp.id = sac.user_id
+on conflict (barber_profile_id) do update
+set email = excluded.email,
+    password_hash = excluded.password_hash,
+    updated_at = timezone('utc', now());
+
+update public.barbers b
+set is_active = bp.is_active,
+    status = bp.status,
+    avatar_url = coalesce(bp.avatar_url, b.avatar_url),
+    phone = coalesce(bp.phone, b.phone),
+    backend_user_id = bp.backend_user_id,
+    updated_at = timezone('utc', now())
+from public.barber_profiles bp
+where bp.barber_id = b.id;
+
+alter table public.barber_profiles enable row level security;
+alter table public.barber_auth_credentials enable row level security;
+
+drop policy if exists "barber_profiles_admin_select" on public.barber_profiles;
+create policy "barber_profiles_admin_select"
+on public.barber_profiles
+for select
+using (public.is_admin());
+
+drop policy if exists "barber_profiles_admin_insert" on public.barber_profiles;
+create policy "barber_profiles_admin_insert"
+on public.barber_profiles
+for insert
+with check (public.is_admin());
+
+drop policy if exists "barber_profiles_admin_update" on public.barber_profiles;
+create policy "barber_profiles_admin_update"
+on public.barber_profiles
+for update
+using (public.is_admin())
+with check (public.is_admin());
+
+drop policy if exists "barber_profiles_admin_delete" on public.barber_profiles;
+create policy "barber_profiles_admin_delete"
+on public.barber_profiles
+for delete
+using (public.is_admin());
+
+drop policy if exists "barber_auth_credentials_admin_only" on public.barber_auth_credentials;
+create policy "barber_auth_credentials_admin_only"
+on public.barber_auth_credentials
+for all
+using (public.is_admin())
+with check (public.is_admin());
+
+create or replace function public.sync_barber_auth_password(
+  input_profile_id uuid,
+  input_email text,
+  input_password text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.barber_auth_credentials (barber_profile_id, email, password_hash)
+  values (
+    input_profile_id,
+    lower(trim(input_email)),
+    public.hash_staff_password(input_password)
+  )
+  on conflict (barber_profile_id) do update
+  set email = excluded.email,
+      password_hash = excluded.password_hash,
+      updated_at = timezone('utc', now());
+end;
+$$;
+
+create or replace function public.sync_barber_auth_email(
+  input_profile_id uuid,
+  input_email text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.barber_auth_credentials
+  set email = lower(trim(input_email)),
+      updated_at = timezone('utc', now())
+  where barber_profile_id = input_profile_id;
+end;
+$$;
+
+create or replace function public.authenticate_staff(
+  input_email text,
+  input_password text,
+  input_role public.app_role default null
+)
+returns table (
+  user_id uuid,
+  email text,
+  full_name text,
+  role public.app_role,
+  phone text,
+  avatar_url text,
+  barber_id uuid,
+  is_active boolean
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    bp.id as user_id,
+    bp.email,
+    bp.full_name,
+    'barber'::public.app_role as role,
+    bp.phone,
+    bp.avatar_url,
+    bp.barber_id,
+    bp.is_active
+  from public.barber_profiles bp
+  join public.barber_auth_credentials bac
+    on bac.barber_profile_id = bp.id
+  where lower(trim(bp.email)) = lower(trim(input_email))
+    and lower(trim(bac.email)) = lower(trim(input_email))
+    and bp.is_active = true
+    and bp.deleted_at is null
+    and (input_role is null or input_role = 'barber')
+    and extensions.crypt(input_password, bac.password_hash) = bac.password_hash
+  limit 1;
+$$;
+
+create or replace function public.update_own_barber_profile_app_user(
+  input_email text,
+  input_password text,
+  input_full_name text,
+  input_phone text,
+  input_avatar_url text,
+  input_bio text,
+  input_specialties text[]
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  authenticated_profile_id uuid;
+  authenticated_barber_id uuid;
+begin
+  select user_id, barber_id
+  into authenticated_profile_id, authenticated_barber_id
+  from public.authenticate_staff(input_email, input_password, 'barber');
+
+  if authenticated_profile_id is null or authenticated_barber_id is null then
+    raise exception 'Credenciais invalidas para barbeiro.';
+  end if;
+
+  update public.barber_profiles
+  set full_name = trim(input_full_name),
+      phone = nullif(trim(coalesce(input_phone, '')), ''),
+      avatar_url = nullif(trim(coalesce(input_avatar_url, '')), ''),
+      updated_at = timezone('utc', now())
+  where id = authenticated_profile_id;
+
+  update public.barbers
+  set name = trim(input_full_name),
+      bio = coalesce(input_bio, ''),
+      phone = nullif(trim(coalesce(input_phone, '')), ''),
+      avatar_url = nullif(trim(coalesce(input_avatar_url, '')), ''),
+      specialties = coalesce(input_specialties, '{}'),
+      updated_at = timezone('utc', now())
+  where id = authenticated_barber_id;
+end;
+$$;
+
+create or replace function public.save_barber_staff_profile(
+  input_user_id uuid,
+  input_email text,
+  input_full_name text,
+  input_phone text,
+  input_avatar_url text,
+  input_is_active boolean,
+  input_barber_id uuid,
+  input_barber_name text,
+  input_barber_bio text,
+  input_barber_phone text,
+  input_barber_avatar_url text,
+  input_barber_specialties text[],
+  input_barber_is_active boolean,
+  input_default_availability jsonb default '[]'::jsonb
+)
+returns table (
+  profile_id uuid,
+  barber_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  resolved_profile_id uuid := coalesce(input_user_id, gen_random_uuid());
+  resolved_barber_id uuid := input_barber_id;
+  should_seed_default_availability boolean := false;
+  resolved_is_active boolean := coalesce(input_is_active, true);
+  resolved_status text := case when coalesce(input_is_active, true) then 'active' else 'inactive' end;
+begin
+  if resolved_barber_id is null then
+    insert into public.barbers (
+      name,
+      bio,
+      phone,
+      avatar_url,
+      specialties,
+      is_active,
+      status,
+      backend_user_id,
+      deleted_at
+    )
+    values (
+      trim(coalesce(input_barber_name, input_full_name)),
+      coalesce(input_barber_bio, ''),
+      nullif(trim(coalesce(input_barber_phone, input_phone, '')), ''),
+      nullif(trim(coalesce(input_barber_avatar_url, input_avatar_url, '')), ''),
+      coalesce(input_barber_specialties, '{}'),
+      resolved_is_active,
+      resolved_status,
+      null,
+      null
+    )
+    returning id into resolved_barber_id;
+
+    should_seed_default_availability := true;
+  else
+    update public.barbers
+    set name = trim(coalesce(input_barber_name, input_full_name)),
+        bio = coalesce(input_barber_bio, ''),
+        phone = nullif(trim(coalesce(input_barber_phone, input_phone, '')), ''),
+        avatar_url = nullif(trim(coalesce(input_barber_avatar_url, input_avatar_url, '')), ''),
+        specialties = coalesce(input_barber_specialties, '{}'),
+        is_active = coalesce(input_barber_is_active, input_is_active, true),
+        status = case when coalesce(input_barber_is_active, input_is_active, true) then 'active' else 'inactive' end,
+        deleted_at = null,
+        updated_at = timezone('utc', now())
+    where id = resolved_barber_id;
+
+    if not found then
+      raise exception 'Barbeiro informado nao foi encontrado.';
+    end if;
+
+    should_seed_default_availability := not exists (
+      select 1
+      from public.barber_availability
+      where barber_id = resolved_barber_id
+    );
+  end if;
+
+  insert into public.barber_profiles (
+    id,
+    barber_id,
+    full_name,
+    email,
+    phone,
+    avatar_url,
+    is_active,
+    status,
+    deleted_at
+  )
+  values (
+    resolved_profile_id,
+    resolved_barber_id,
+    trim(input_full_name),
+    lower(trim(input_email)),
+    nullif(trim(coalesce(input_phone, '')), ''),
+    nullif(trim(coalesce(input_avatar_url, '')), ''),
+    resolved_is_active,
+    resolved_status,
+    null
+  )
+  on conflict (id) do update
+  set barber_id = excluded.barber_id,
+      full_name = excluded.full_name,
+      email = excluded.email,
+      phone = excluded.phone,
+      avatar_url = excluded.avatar_url,
+      is_active = excluded.is_active,
+      status = excluded.status,
+      deleted_at = null,
+      updated_at = timezone('utc', now());
+
+  if should_seed_default_availability then
+    insert into public.barber_availability (
+      id,
+      barber_id,
+      day_of_week,
+      start_time,
+      end_time,
+      slot_interval_minutes,
+      is_active
+    )
+    select
+      gen_random_uuid(),
+      resolved_barber_id,
+      (item->>'day_of_week')::integer,
+      (item->>'start_time')::time,
+      (item->>'end_time')::time,
+      coalesce((item->>'slot_interval_minutes')::integer, 30),
+      coalesce((item->>'is_active')::boolean, true)
+    from jsonb_array_elements(coalesce(input_default_availability, '[]'::jsonb)) item;
+  end if;
+
+  return query
+  select resolved_profile_id, resolved_barber_id;
+end;
+$$;
+
+comment on table public.staff_profiles is 'Perfis autenticados via Supabase Auth para administradores.';
+comment on table public.barber_profiles is 'Perfis internos de barbeiros sem dependencia de auth.users.';
+
+create or replace function public.upsert_admin_staff_profile(
+  input_user_id uuid,
+  input_email text,
+  input_full_name text,
+  input_phone text default null,
+  input_is_active boolean default true
+)
+returns public.staff_profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  saved_profile public.staff_profiles;
+begin
+  insert into public.staff_profiles (
+    id,
+    email,
+    full_name,
+    role,
+    phone,
+    avatar_url,
+    barber_id,
+    is_active
+  )
+  values (
+    input_user_id,
+    lower(trim(input_email)),
+    trim(input_full_name),
+    'admin',
+    nullif(trim(coalesce(input_phone, '')), ''),
+    null,
+    null,
+    coalesce(input_is_active, true)
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      full_name = excluded.full_name,
+      phone = excluded.phone,
+      role = 'admin',
+      barber_id = null,
+      is_active = excluded.is_active,
+      updated_at = timezone('utc', now())
+  returning * into saved_profile;
+
+  return saved_profile;
+end;
+$$;
+
+revoke all on function public.upsert_admin_staff_profile(uuid, text, text, text, boolean) from public;

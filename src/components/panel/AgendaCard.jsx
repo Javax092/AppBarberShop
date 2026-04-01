@@ -3,9 +3,9 @@ import { useSwipe } from "../../hooks/useSwipe";
 import { useVibration } from "../../hooks/useVibration";
 
 const STATUS_LABELS = {
+  pending: "Pendente",
   confirmed: "Confirmado",
-  "in-progress": "Em andamento",
-  done: "Concluido",
+  completed: "Concluido",
   cancelled: "Cancelado"
 };
 
@@ -22,7 +22,7 @@ export function AgendaCard({
   const swipe = useSwipe({
     threshold,
     onSwipeRight: () => {
-      if (appointment.status !== "cancelled" && appointment.status !== "done") {
+      if (appointment.status === "pending" || appointment.status === "confirmed") {
         vibration.confirm();
         onAdvanceStatus?.(appointment);
       }
@@ -113,11 +113,7 @@ export function AgendaCard({
           color: var(--color-gold-light);
         }
 
-        .agenda-card-v2__status[data-status="in-progress"] {
-          color: var(--status-info);
-        }
-
-        .agenda-card-v2__status[data-status="done"] {
+        .agenda-card-v2__status[data-status="completed"] {
           color: var(--status-success);
         }
 
@@ -197,12 +193,15 @@ export function AgendaCard({
 
           <div className="agenda-card-v2__actions">
             {/* ALTERACAO: fallback explicito por botoes para desktop e usuarios que nao usam swipe. */}
-            <button className="agenda-card-v2__button" type="button" onClick={() => onAdvanceStatus?.(appointment)}>
-              Avancar status
-            </button>
-            <button className="agenda-card-v2__button agenda-card-v2__button--danger" type="button" onClick={() => onCancel?.(appointment)}>
+            {appointment.status === "pending" ? <button className="agenda-card-v2__button" type="button" onClick={() => onAdvanceStatus?.(appointment)}>
+              Confirmar
+            </button> : null}
+            {appointment.status === "confirmed" ? <button className="agenda-card-v2__button" type="button" onClick={() => onAdvanceStatus?.(appointment)}>
+              Concluir
+            </button> : null}
+            {(appointment.status === "pending" || appointment.status === "confirmed") ? <button className="agenda-card-v2__button agenda-card-v2__button--danger" type="button" onClick={() => onCancel?.(appointment)}>
               Cancelar
-            </button>
+            </button> : null}
             <button className="agenda-card-v2__button" type="button" onClick={() => onOpenWhatsapp?.(appointment)}>
               WhatsApp
             </button>

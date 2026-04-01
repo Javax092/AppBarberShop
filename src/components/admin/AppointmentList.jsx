@@ -2,8 +2,21 @@
 import { useState } from "react";
 import { formatDateLabel, formatLongDate } from "../../utils/schedule";
 
-const statusFlow = ["confirmed", "in-progress", "done"];
-const statusLabel = { confirmed: "Confirmado", "in-progress": "Em andamento", done: "Concluido", cancelled: "Cancelado" };
+const statusFlow = ["pending", "confirmed", "completed"];
+const statusLabel = {
+  pending: "Pendente",
+  confirmed: "Confirmado",
+  completed: "Concluido",
+  cancelled: "Cancelado"
+};
+
+function getStatusActions(status) {
+  return {
+    canConfirm: status === "pending",
+    canComplete: status === "confirmed",
+    canCancel: status === "pending" || status === "confirmed"
+  };
+}
 
 function WhatsappIcon() {
   return (
@@ -116,7 +129,7 @@ export function AppointmentList({
 
         <div className={cx.filters}>
           <label>Profissional<select value={adminBarberFilter} onChange={(event) => onAdminBarberFilterChange(event.target.value)}><option value="all">Todos</option>{barbers.map((barber) => <option key={barber.id} value={barber.id}>{barber.name}</option>)}</select></label>
-          <label>Status<select value={adminStatusFilter} onChange={(event) => onAdminStatusFilterChange(event.target.value)}><option value="all">Todos</option><option value="confirmed">Confirmado</option><option value="in-progress">Em andamento</option><option value="done">Concluido</option><option value="cancelled">Cancelado</option></select></label>
+          <label>Status<select value={adminStatusFilter} onChange={(event) => onAdminStatusFilterChange(event.target.value)}><option value="all">Todos</option><option value="pending">Pendente</option><option value="confirmed">Confirmado</option><option value="completed">Concluido</option><option value="cancelled">Cancelado</option></select></label>
           <label>Data<select value={adminDateFilter} onChange={(event) => onAdminDateFilterChange(event.target.value)}><option value="all">Todas</option>{dateOptions.map((date) => <option key={date} value={date}>{formatDateLabel(date)}</option>)}</select></label>
         </div>
 
@@ -125,7 +138,7 @@ export function AppointmentList({
             const hydrated = hydrateAppointmentView(appointment);
             const services = getAppointmentServiceList(appointment);
             const currentIndex = statusFlow.indexOf(appointment.status);
-            const nextStatus = currentIndex >= 0 && currentIndex < statusFlow.length - 1 ? statusFlow[currentIndex + 1] : "";
+            const { canCancel, canComplete, canConfirm } = getStatusActions(appointment.status);
             return (
               <article key={appointment.id} className={cx.item}>
                 <div className="actions-row" style={{ justifyContent: "space-between" }}>
@@ -140,9 +153,10 @@ export function AppointmentList({
                 </div>
                 <div className="actions-row">
                   <button className="secondary-button compact-button" aria-label={`Editar agendamento ${appointment.id}`} type="button" onClick={() => onBeginEditAppointment(appointment)}>Editar</button>
-                  {nextStatus ? <button className="primary-button compact-button" aria-label={`Avancar agendamento ${appointment.id}`} type="button" disabled={statusUpdateId === appointment.id} onClick={() => onStatusChange(appointment.id, nextStatus)}>{statusUpdateId === appointment.id ? "Atualizando..." : `Avancar para ${statusLabel[nextStatus]}`}</button> : null}
+                  {canConfirm ? <button className="primary-button compact-button" aria-label={`Confirmar agendamento ${appointment.id}`} type="button" disabled={statusUpdateId === appointment.id} onClick={() => onStatusChange(appointment.id, "confirmed")}>{statusUpdateId === appointment.id ? "Atualizando..." : "Confirmar"}</button> : null}
+                  {canComplete ? <button className="primary-button compact-button" aria-label={`Concluir agendamento ${appointment.id}`} type="button" disabled={statusUpdateId === appointment.id} onClick={() => onStatusChange(appointment.id, "completed")}>{statusUpdateId === appointment.id ? "Atualizando..." : "Concluir"}</button> : null}
                   <a className="secondary-button compact-button appointment-list__whatsapp" aria-label={`Avisar barbeiro sobre ${appointment.id}`} href={hydrated.barberWhatsappLink} target="_blank" rel="noreferrer"><WhatsappIcon />Avisar barbeiro</a>
-                  {appointment.status !== "cancelled" ? (
+                  {canCancel ? (
                     confirmingCancelId === appointment.id ? (
                       <div className="actions-row">
                         <button className="secondary-button compact-button danger-button" aria-label={`Confirmar cancelamento de ${appointment.id}`} type="button" onClick={() => onStatusChange(appointment.id, "cancelled")}>Confirmar cancelamento</button>

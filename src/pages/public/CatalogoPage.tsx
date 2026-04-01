@@ -4,12 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { ListaCatalogo } from "../../components/catalogo/ListaCatalogo.tsx";
 import { BotaoVoltar } from "../../components/layout/BotaoVoltar.tsx";
 import { Navbar } from "../../components/layout/Navbar.tsx";
+import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Spinner } from "../../components/ui/Spinner.tsx";
+import { StatusPanel } from "../../components/ui/StatusPanel.tsx";
 import { useCatalogo } from "../../hooks/useCatalogo.ts";
 
 export function CatalogoPage() {
   const navigate = useNavigate();
-  const { servicos, categorias, loading } = useCatalogo();
+  const { servicos, categorias, error, loading } = useCatalogo();
   const [categoria, setCategoria] = useState("all");
 
   const filtrados = useMemo(
@@ -42,7 +44,20 @@ export function CatalogoPage() {
             </select>
           </div>
         </section>
+        {error ? (
+          <StatusPanel
+            description="A listagem comercial nao conseguiu consultar o backend neste momento. Quando a conexao voltar, o catalogo retoma sem precisar alterar a tela."
+            title={error}
+            tone="warning"
+          />
+        ) : null}
         {loading ? <Spinner /> : null}
+        {!loading && filtrados.length === 0 ? (
+          <EmptyState
+            description="Nenhum servico corresponde ao filtro atual ou o catalogo ainda nao possui itens ativos."
+            title="Catalogo temporariamente vazio"
+          />
+        ) : null}
         <ListaCatalogo onAgendar={(servico) => navigate(`/agendamento?serviceId=${servico.id}`)} servicos={filtrados} />
       </main>
     </div>

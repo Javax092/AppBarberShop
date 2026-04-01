@@ -5,13 +5,17 @@ import type { Promocao, PromocaoPayload } from "../types/index.ts";
 
 export function usePromocoes(includeInactive = false) {
   const [promocoes, setPromocoes] = useState<Promocao[]>([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await listPromocoes(includeInactive);
       setPromocoes(data);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Nao foi possivel carregar as promocoes.");
     } finally {
       setLoading(false);
     }
@@ -23,6 +27,7 @@ export function usePromocoes(includeInactive = false) {
 
   return {
     promocoes,
+    error,
     loading,
     refresh,
     salvar: async (payload: PromocaoPayload, file?: File | null) => {

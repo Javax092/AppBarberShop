@@ -19,7 +19,9 @@ export function getBarberAvatarMimeType(file: File) {
     return normalizedType as keyof typeof ALLOWED_TYPES;
   }
 
-  const fallbackType = Object.entries(ALLOWED_TYPES).find(([, extensions]) => extensions.includes(extension));
+  const fallbackType = Object.entries(ALLOWED_TYPES).find(([, extensions]) =>
+    (extensions as readonly string[]).includes(extension)
+  );
   return (fallbackType?.[0] ?? null) as keyof typeof ALLOWED_TYPES | null;
 }
 

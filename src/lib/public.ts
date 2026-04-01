@@ -7,7 +7,7 @@ import type {
   ScheduleBlock,
   Servico
 } from "../types/index.ts";
-import { getPublicUrl, supabase } from "./supabase.ts";
+import { assertSupabaseConfigured, getPublicUrl, supabase } from "./supabase.ts";
 
 interface PublicBarberRow {
   id: string;
@@ -163,6 +163,7 @@ function mapScheduleBlock(row: PublicScheduleBlockRow): ScheduleBlock {
 }
 
 export async function getPublicHomeSnapshot(): Promise<PublicHomeSnapshot> {
+  assertSupabaseConfigured();
   const { data, error } = await supabase.rpc("public_home_snapshot");
 
   if (error) {
@@ -188,6 +189,7 @@ export async function getPublicHomeSnapshot(): Promise<PublicHomeSnapshot> {
 }
 
 export async function getPublicBookingSnapshot(): Promise<PublicBookingSnapshot> {
+  assertSupabaseConfigured();
   const { data, error } = await supabase.rpc("public_booking_snapshot_v2");
 
   if (error) {

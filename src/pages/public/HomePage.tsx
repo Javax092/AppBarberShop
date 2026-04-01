@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { CardBarbeiro } from "../../components/barbeiro/CardBarbeiro.tsx";
 import { ListaCatalogo } from "../../components/catalogo/ListaCatalogo.tsx";
 import { BannerPromocao } from "../../components/promocoes/BannerPromocao.tsx";
-import { BarberCardSkeleton, MetricSkeleton, ServiceCardSkeleton, Skeleton } from "../../components/ui/Skeleton.jsx";
+import { BarberCardSkeleton, MetricSkeleton, ServiceCardSkeleton, Skeleton } from "../../components/ui/Skeleton.tsx";
+import { StatusPanel } from "../../components/ui/StatusPanel.tsx";
 import { usePublicHome } from "../../hooks/usePublicHome.ts";
 
 const landingLinks = [
@@ -23,7 +24,7 @@ function formatCurrency(value: number) {
 export function HomePage() {
   const navigate = useNavigate();
 
-  const { barbers: barbeiros, services: servicos, metrics, loading } = usePublicHome();
+  const { barbers: barbeiros, services: servicos, metrics, error, loading } = usePublicHome();
   const promocaoAtiva = servicos.map((item) => item.promotion).filter((item) => item?.status === "ativa");
   const promocaoDestaque = promocaoAtiva[0] ?? null;
   const servicosAtivos = servicos.filter((item) => item.isActive !== false);
@@ -287,6 +288,21 @@ export function HomePage() {
           </div>
         </section>
       </header>
+
+      {error ? (
+        <div className="shell mt-6">
+          <StatusPanel
+            action={
+              <button className="btn-secondary whitespace-nowrap" onClick={() => window.location.reload()} type="button">
+                Tentar novamente
+              </button>
+            }
+            description="A vitrine publica manteve a estrutura visual, mas os dados do Supabase nao responderam agora. Isso evita tela branca e deixa claro que a indisponibilidade e de integracao."
+            title={error}
+            tone="warning"
+          />
+        </div>
+      ) : null}
 
       <main className="shell mt-6 space-y-6 sm:mt-8 sm:space-y-8">
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

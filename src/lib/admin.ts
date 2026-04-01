@@ -6,7 +6,6 @@ import {
   type AdminSessionState,
   type StaffProfile
 } from "./supabase.ts";
-import { HARDCODED_ADMIN_EMAIL } from "./auth.ts";
 
 export interface AdminCredentials {
   email: string;
@@ -38,17 +37,6 @@ function buildStoragePath(file: File, folder = PUBLIC_IMAGES_FOLDER): string {
 }
 
 async function fetchOwnAdminProfile(session: Session): Promise<StaffProfile | null> {
-  const normalizedSessionEmail = session.user.email?.trim().toLowerCase() ?? "";
-
-  if (normalizedSessionEmail === HARDCODED_ADMIN_EMAIL) {
-    return {
-      id: session.user.id,
-      email: normalizedSessionEmail,
-      role: "admin",
-      is_active: true
-    };
-  }
-
   const { data, error } = await supabase
     .from("staff_profiles")
     .select("id, email, role, is_active")

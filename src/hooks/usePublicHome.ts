@@ -16,6 +16,7 @@ const initialState: PublicHomeSnapshot = {
 
 export function usePublicHome() {
   const [data, setData] = useState<PublicHomeSnapshot>(initialState);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,10 +24,15 @@ export function usePublicHome() {
 
     async function load() {
       setLoading(true);
+      setError("");
       try {
         const snapshot = await getPublicHomeSnapshot();
         if (active) {
           setData(snapshot);
+        }
+      } catch (nextError) {
+        if (active) {
+          setError(nextError instanceof Error ? nextError.message : "Nao foi possivel carregar a vitrine publica.");
         }
       } finally {
         if (active) {
@@ -44,6 +50,7 @@ export function usePublicHome() {
 
   return {
     ...data,
+    error,
     loading
   };
 }

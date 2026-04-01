@@ -4,12 +4,13 @@ import { CardBarbeiro } from "../../components/barbeiro/CardBarbeiro.tsx";
 import { BotaoVoltar } from "../../components/layout/BotaoVoltar.tsx";
 import { Navbar } from "../../components/layout/Navbar.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
-import { BarberCardSkeleton } from "../../components/ui/Skeleton.jsx";
+import { BarberCardSkeleton } from "../../components/ui/Skeleton.tsx";
+import { StatusPanel } from "../../components/ui/StatusPanel.tsx";
 import { usePublicHome } from "../../hooks/usePublicHome.ts";
 
 export function BarbeirosPage() {
   const navigate = useNavigate();
-  const { barbers: barbeiros, loading } = usePublicHome();
+  const { barbers: barbeiros, error, loading } = usePublicHome();
 
   return (
     <div className="pb-16">
@@ -23,6 +24,13 @@ export function BarbeirosPage() {
             A página reforça autoridade, especialidades e qualidade de atendimento antes mesmo da reserva ser concluída.
           </p>
         </section>
+        {error ? (
+          <StatusPanel
+            description="A vitrine publica nao conseguiu buscar os barbeiros agora. A estrutura da pagina segue funcional, mas a lista depende da disponibilidade do backend."
+            title={error}
+            tone="warning"
+          />
+        ) : null}
         {barbeiros.length === 0 && !loading ? (
           <EmptyState description="Cadastre barbeiros no painel admin para exibi-los aqui." title="Nenhum barbeiro disponível" />
         ) : null}

@@ -2,7 +2,7 @@ import { addMinutes, format, getDay, isAfter, parse } from "date-fns";
 
 import type { Barbeiro, BusySlotRow, HorarioDisponibilidade, HorarioSlot, ScheduleBlock } from "../types/index.ts";
 import { listBarbeiros, listDisponibilidade, listScheduleBlocks } from "./barbeiros.ts";
-import { supabase } from "./supabase.ts";
+import { assertSupabaseConfigured, supabase } from "./supabase.ts";
 
 function overlaps(slotStart: string, slotEnd: string, busyStart: string, busyEnd: string) {
   return !(slotEnd <= busyStart || slotStart >= busyEnd);
@@ -57,6 +57,7 @@ function buildSlotsForAvailability(
 }
 
 export async function listBusySlots(date: string, barberId?: string | null) {
+  assertSupabaseConfigured();
   const { data, error } = await supabase.rpc("get_busy_slots", {
     target_date: date,
     target_barber_id: barberId ?? null
@@ -79,6 +80,7 @@ export async function listAvailableSlots(
     scheduleBlocks?: ScheduleBlock[];
   }
 ) {
+  assertSupabaseConfigured();
   const [barbers, availability, busySlots, scheduleBlocks] = await Promise.all([
     preload?.barbers ? Promise.resolve(preload.barbers) : listBarbeiros(false),
     preload?.availability ? Promise.resolve(preload.availability) : listDisponibilidade(barberId ?? undefined),

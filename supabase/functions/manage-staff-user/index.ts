@@ -5,36 +5,37 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
-const HARDCODED_ADMIN_EMAIL = "ryanlmxxv@gmail.com";
+const DEFAULT_BARBER_AVAILABILITY = [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+  day_of_week: dayOfWeek,
+  start_time: "09:00:00",
+  end_time: "18:00:00",
+  slot_interval_minutes: 30,
+  is_active: true
+}));
 
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json"
-    }
-  });
-}
+type StaffAction =
+  | "create_barber"
+  | "update_barber"
+  | "deactivate_barber"
+  | "reactivate_barber"
+  | "delete_barber"
+  | "reset_password"
+  | "reset-password"
+  | "upsert"
+  | "toggle-active"
+  | "delete";
 
-function normalizeEmail(email: string | null | undefined) {
-  return (email ?? "").trim().toLowerCase();
-}
-
-type StaffAction = "upsert" | "toggle-active" | "reset-password" | "delete";
-
-interface StaffPayload {
-  id?: string;
+interface BarberPayload {
+  id?: string | null;
   email?: string;
-  password?: string;
+  password?: string | null;
   fullName?: string;
-  role?: "admin" | "barber";
-  barberId?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
   isActive?: boolean;
+  backendUserId?: string | null;
   barber?: {
-    id?: string;
+    id?: string | null;
     name?: string;
     bio?: string;
     phone?: string | null;
@@ -44,143 +45,218 @@ interface StaffPayload {
   };
 }
 
-const DEFAULT_BARBER_AVAILABILITY = [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
-  day_of_week: dayOfWeek,
-  start_time: "09:00:00",
-  end_time: "18:00:00",
-  slot_interval_minutes: 30,
-  is_active: true
-}));
-
-interface StaffProfileRow {
+interface BarberProfileRow {
   id: string;
-  email: string;
+  barber_id: string;
   full_name: string;
-  role: "admin" | "barber";
-  barber_id: string | null;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
   is_active: boolean;
-  avatar_url?: string | null;
+  status: string;
+  deleted_at: string | null;
+  backend_user_id: string | null;
+  barbers?: {
+    id: string;
+    name: string;
+    bio: string;
+    phone: string | null;
+    avatar_url: string | null;
+    specialties: string[];
+    is_active: boolean;
+    status: string;
+    deleted_at: string | null;
+  } | null;
 }
 
-const STORAGE_BUCKET = Deno.env.get("SUPABASE_STORAGE_BUCKET") ?? "barbershop-assets";
+function normalizeEmail(email: string | null | undefined) {
+  return (email ?? "").trim().toLowerCase();
+}
 
-function getStoragePath(value: string | null | undefined) {
-  const raw = (value ?? "").trim();
-  if (!raw) {
-    return null;
-  }
-
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    try {
-      const url = new URL(raw);
-      const marker = "/object/public/";
-      const markerIndex = url.pathname.indexOf(marker);
-
-      if (markerIndex >= 0) {
-        return decodeURIComponent(url.pathname.slice(markerIndex + marker.length).split("/").slice(1).join("/"));
+function buildResponse(
+  success: boolean,
+  code: string,
+  message: string,
+  details?: Record<string, unknown>,
+  httpStatus = 200,
+  extra?: Record<string, unknown>
+) {
+  return new Response(
+    JSON.stringify({
+      success,
+      code,
+      message,
+      details: details ?? null,
+      ...(extra ?? {})
+    }),
+    {
+      status: httpStatus,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json"
       }
-    } catch {
-      return null;
     }
+  );
+}
+
+function ok(code: string, message: string, details?: Record<string, unknown>, httpStatus = 200, extra?: Record<string, unknown>) {
+  return buildResponse(true, code, message, details, httpStatus, extra);
+}
+
+function fail(code: string, message: string, httpStatus: number, details?: Record<string, unknown>) {
+  return buildResponse(false, code, message, details, httpStatus);
+}
+
+async function requireAdminContext(request: Request) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const authHeader = request.headers.get("Authorization") ?? "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return {
+      error: fail("AUTH_BEARER_REQUIRED", "Token Bearer do admin nao informado.", 401)
+    };
   }
 
-  return raw;
-}
-
-function isManagedAvatarPath(path: string | null | undefined, profileId: string) {
-  const normalizedPath = getStoragePath(path);
-  return normalizedPath?.startsWith(`barbers/${profileId}/`) ?? false;
-}
-
-async function getStaffProfileById(adminClient: ReturnType<typeof createClient>, userId: string) {
-  const { data, error } = await adminClient
-    .from("staff_profiles")
-    .select("id, email, full_name, role, barber_id, is_active, avatar_url")
-    .eq("id", userId)
-    .maybeSingle<StaffProfileRow>();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-async function getStaffProfileByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
-  const { data, error } = await adminClient
-    .from("staff_profiles")
-    .select("id, email, full_name, role, barber_id, is_active, avatar_url")
-    .eq("email", normalizeEmail(email))
-    .maybeSingle<StaffProfileRow>();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-async function updateAuthUser(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-  normalizedEmail: string,
-  fullName: string,
-  password?: string
-) {
-  const authUpdate: Record<string, unknown> = {
-    email: normalizedEmail,
-    user_metadata: {
-      full_name: fullName
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: {
+      headers: {
+        Authorization: authHeader
+      }
     }
-  };
-
-  if (password) {
-    authUpdate.password = password;
-  }
-
-  const { error } = await adminClient.auth.admin.updateUserById(userId, authUpdate);
-  if (error) {
-    throw error;
-  }
-}
-
-async function cleanupCreatedResources(
-  adminClient: ReturnType<typeof createClient>,
-  createdBarberId: string | null,
-  createdUserId: string | null
-) {
-  if (createdBarberId) {
-    await adminClient.from("barbers").delete().eq("id", createdBarberId);
-  }
-
-  if (createdUserId) {
-    await adminClient.auth.admin.deleteUser(createdUserId);
-  }
-}
-
-async function syncStaffAppCredentialEmail(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-  email: string
-) {
-  const { error } = await adminClient.rpc("sync_staff_app_credential_email", {
-    input_user_id: userId,
-    input_email: email
   });
 
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  const {
+    data: { user },
+    error: userError
+  } = await userClient.auth.getUser();
+
+  if (userError || !user) {
+    return {
+      error: fail("AUTH_INVALID_SESSION", "Sessao do admin ausente, expirada ou invalida. Entre novamente.", 401)
+    };
+  }
+
+  const { data: profile, error: profileError } = await adminClient
+    .from("staff_profiles")
+    .select("id, role, is_active")
+    .eq("id", user.id)
+    .maybeSingle<{ id: string; role: "admin" | "barber"; is_active: boolean }>();
+
+  if (profileError || !profile || profile.role !== "admin" || !profile.is_active) {
+    return {
+      error: fail(
+        "ADMIN_FORBIDDEN",
+        "O usuario autenticado nao tem permissao administrativa ativa para gerenciar barbeiros.",
+        403
+      )
+    };
+  }
+
+  return {
+    adminClient,
+    adminUserId: user.id
+  };
+}
+
+async function getBarberProfileById(adminClient: ReturnType<typeof createClient>, profileId: string) {
+  const { data, error } = await adminClient
+    .from("barber_profiles")
+    .select("id, barber_id, full_name, email, phone, avatar_url, is_active, status, deleted_at, backend_user_id, barbers:barber_id (*)")
+    .eq("id", profileId)
+    .maybeSingle<BarberProfileRow>();
+
   if (error) {
     throw error;
   }
+
+  return data;
 }
 
-async function syncStaffAppPassword(
+async function getBarberProfileByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const { data, error } = await adminClient
+    .from("barber_profiles")
+    .select("id, barber_id, full_name, email, phone, avatar_url, is_active, status, deleted_at, backend_user_id, barbers:barber_id (*)")
+    .eq("email", normalizedEmail)
+    .maybeSingle<BarberProfileRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+async function countDependency(adminClient: ReturnType<typeof createClient>, table: string, barberId: string) {
+  const { count, error } = await adminClient.from(table).select("id", { count: "exact", head: true }).eq("barber_id", barberId);
+
+  if (error) {
+    if (error.message?.toLowerCase().includes("barber_id")) {
+      return 0;
+    }
+
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
+async function countBarberDependencies(adminClient: ReturnType<typeof createClient>, barberId: string) {
+  const [appointments, services, availability, scheduleBlocks] = await Promise.all([
+    countDependency(adminClient, "appointments", barberId),
+    countDependency(adminClient, "services", barberId),
+    countDependency(adminClient, "barber_availability", barberId),
+    countDependency(adminClient, "schedule_blocks", barberId)
+  ]);
+
+  return {
+    appointments,
+    services,
+    availability,
+    scheduleBlocks
+  };
+}
+
+async function seedDefaultAvailabilityIfNeeded(adminClient: ReturnType<typeof createClient>, barberId: string) {
+  const { count, error } = await adminClient
+    .from("barber_availability")
+    .select("id", { count: "exact", head: true })
+    .eq("barber_id", barberId);
+
+  if (error) {
+    throw error;
+  }
+
+  if ((count ?? 0) > 0) {
+    return;
+  }
+
+  const rows = DEFAULT_BARBER_AVAILABILITY.map((item) => ({
+    barber_id: barberId,
+    day_of_week: item.day_of_week,
+    start_time: item.start_time,
+    end_time: item.end_time,
+    slot_interval_minutes: item.slot_interval_minutes,
+    is_active: item.is_active
+  }));
+
+  const { error: insertError } = await adminClient.from("barber_availability").insert(rows);
+  if (insertError) {
+    throw insertError;
+  }
+}
+
+async function syncInternalPassword(
   adminClient: ReturnType<typeof createClient>,
-  userId: string,
+  profileId: string,
   email: string,
   password: string
 ) {
-  const { error } = await adminClient.rpc("sync_staff_app_password", {
-    input_user_id: userId,
+  const { error } = await adminClient.rpc("sync_barber_auth_password", {
+    input_profile_id: profileId,
     input_email: email,
     input_password: password
   });
@@ -190,83 +266,301 @@ async function syncStaffAppPassword(
   }
 }
 
-async function deleteManagedBarberAvatar(
-  adminClient: ReturnType<typeof createClient>,
-  profileId: string,
-  avatarUrl: string | null | undefined
-) {
-  const path = getStoragePath(avatarUrl);
-  if (!path || !isManagedAvatarPath(path, profileId)) {
-    return;
-  }
-
-  await adminClient.storage.from(STORAGE_BUCKET).remove([path]);
-}
-
-async function saveBarberStaffProfile(
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-  staff: StaffPayload
-) {
-  const { data, error } = await adminClient.rpc("save_barber_staff_profile", {
-    input_user_id: userId,
-    input_email: normalizeEmail(staff.email),
-    input_full_name: staff.fullName ?? staff.barber?.name ?? "",
-    input_phone: staff.phone ?? null,
-    input_avatar_url: staff.avatarUrl ?? null,
-    input_is_active: Boolean(staff.isActive ?? true),
-    input_barber_id: staff.barber?.id ?? staff.barberId ?? null,
-    input_barber_name: staff.barber?.name ?? staff.fullName ?? "",
-    input_barber_bio: staff.barber?.bio ?? "",
-    input_barber_phone: staff.barber?.phone ?? staff.phone ?? null,
-    input_barber_avatar_url: staff.barber?.avatarUrl ?? staff.avatarUrl ?? null,
-    input_barber_specialties: staff.barber?.specialties ?? [],
-    input_barber_is_active: Boolean(staff.barber?.isActive ?? staff.isActive ?? true),
-    input_default_availability: DEFAULT_BARBER_AVAILABILITY
+async function syncInternalEmail(adminClient: ReturnType<typeof createClient>, profileId: string, email: string) {
+  const { error } = await adminClient.rpc("sync_barber_auth_email", {
+    input_profile_id: profileId,
+    input_email: email
   });
 
   if (error) {
     throw error;
   }
+}
 
-  const row = Array.isArray(data) ? data[0] : data;
-  const barberId = row?.barber_id ?? row?.barberId ?? null;
-
-  if (!barberId) {
-    throw new Error("Nao foi possivel salvar o vinculo do barbeiro.");
-  }
-
+function mapBarberResponse(profile: BarberProfileRow) {
   return {
-    profileId: row?.profile_id ?? row?.profileId ?? userId,
-    barberId
+    profileId: profile.id,
+    barberId: profile.barber_id,
+    fullName: profile.full_name,
+    email: profile.email,
+    phone: profile.phone,
+    avatarUrl: profile.avatar_url,
+    isActive: profile.is_active,
+    status: profile.status,
+    backendUserId: profile.backend_user_id,
+    barber: profile.barbers
+      ? {
+          id: profile.barbers.id,
+          name: profile.barbers.name,
+          bio: profile.barbers.bio,
+          phone: profile.barbers.phone,
+          avatarUrl: profile.barbers.avatar_url,
+          specialties: profile.barbers.specialties ?? [],
+          isActive: profile.barbers.is_active,
+          status: profile.barbers.status
+        }
+      : null
   };
 }
 
-async function ensureProfileOwnership(
+async function saveBarber(
   adminClient: ReturnType<typeof createClient>,
-  userId: string,
-  normalizedEmail: string
+  actorAdminUserId: string,
+  action: StaffAction,
+  barber: BarberPayload
 ) {
-  const [profileById, profileByEmail] = await Promise.all([
-    getStaffProfileById(adminClient, userId),
-    getStaffProfileByEmail(adminClient, normalizedEmail)
+  const normalizedEmail = normalizeEmail(barber.email);
+  const fullName = barber.fullName?.trim() ?? "";
+  const password = barber.password?.trim() ?? "";
+  const profileId = barber.id?.trim() ?? "";
+  const requestedBarberId = barber.barber?.id?.trim() ?? null;
+  const isCreate = action === "create_barber" || (action === "upsert" && !profileId);
+
+  if (!normalizedEmail || !fullName) {
+    return fail("BARBER_INVALID_INPUT", "Nome completo e email do barbeiro sao obrigatorios.", 400);
+  }
+
+  if (isCreate && !password) {
+    return fail("BARBER_PASSWORD_REQUIRED", "Senha inicial obrigatoria para novo barbeiro.", 400);
+  }
+
+  const [existingById, existingByEmail] = await Promise.all([
+    profileId ? getBarberProfileById(adminClient, profileId) : Promise.resolve(null),
+    getBarberProfileByEmail(adminClient, normalizedEmail)
   ]);
 
-  if (profileById && profileById.email !== normalizedEmail) {
-    return {
-      error:
-        "Ja existe um staff_profiles para este usuario com outro email. Atualize o cadastro existente antes de trocar o email."
-    };
+  if (profileId && !existingById) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro nao encontrado para atualizacao.", 404);
   }
 
-  if (profileByEmail && profileByEmail.id !== userId) {
-    return {
-      error:
-        "Ja existe outro staff_profiles usando este email. Sincronize ou remova o perfil antigo antes de reutilizar o email."
-    };
+  if (existingByEmail && existingByEmail.id !== profileId) {
+    return fail("BARBER_EMAIL_CONFLICT", "Ja existe outro barbeiro interno usando este email.", 409);
   }
 
-  return { profileById, profileByEmail };
+  const resolvedProfileId = existingById?.id ?? crypto.randomUUID();
+  const resolvedBarberId = existingById?.barber_id ?? requestedBarberId ?? crypto.randomUUID();
+  const active = Boolean(barber.isActive ?? barber.barber?.isActive ?? true);
+  const status = active ? "active" : "inactive";
+
+  if (!existingById) {
+    const { error: insertBarberError } = await adminClient.from("barbers").insert({
+      id: resolvedBarberId,
+      name: barber.barber?.name?.trim() || fullName,
+      bio: barber.barber?.bio ?? "",
+      phone: barber.barber?.phone?.trim() || barber.phone?.trim() || null,
+      avatar_url: barber.barber?.avatarUrl ?? barber.avatarUrl ?? null,
+      specialties: barber.barber?.specialties ?? [],
+      is_active: active,
+      status,
+      created_by_admin_id: actorAdminUserId,
+      backend_user_id: barber.backendUserId?.trim() || null,
+      deleted_at: null
+    });
+
+    if (insertBarberError) {
+      return fail("BARBER_CREATE_FAILED", insertBarberError.message, 400);
+    }
+  } else {
+    const { error: updateBarberError } = await adminClient
+      .from("barbers")
+      .update({
+        name: barber.barber?.name?.trim() || fullName,
+        bio: barber.barber?.bio ?? "",
+        phone: barber.barber?.phone?.trim() || barber.phone?.trim() || null,
+        avatar_url: barber.barber?.avatarUrl ?? barber.avatarUrl ?? null,
+        specialties: barber.barber?.specialties ?? [],
+        is_active: active,
+        status,
+        backend_user_id: barber.backendUserId?.trim() || null,
+        deleted_at: null
+      })
+      .eq("id", resolvedBarberId);
+
+    if (updateBarberError) {
+      return fail("BARBER_UPDATE_FAILED", updateBarberError.message, 400);
+    }
+  }
+
+  const profilePayload: Record<string, unknown> = {
+    id: resolvedProfileId,
+    barber_id: resolvedBarberId,
+    full_name: fullName,
+    email: normalizedEmail,
+    phone: barber.phone?.trim() || null,
+    avatar_url: barber.avatarUrl ?? null,
+    is_active: active,
+    status,
+    created_by_admin_id: existingById ? undefined : actorAdminUserId,
+    backend_user_id: barber.backendUserId?.trim() || null,
+    deleted_at: null
+  };
+
+  if (!existingById) {
+    profilePayload.created_by_admin_id = actorAdminUserId;
+  }
+
+  const { error: profileError } = await adminClient.from("barber_profiles").upsert(profilePayload, { onConflict: "id" });
+  if (profileError) {
+    return fail("BARBER_PROFILE_SAVE_FAILED", profileError.message, 400);
+  }
+
+  try {
+    await seedDefaultAvailabilityIfNeeded(adminClient, resolvedBarberId);
+    await syncInternalEmail(adminClient, resolvedProfileId, normalizedEmail);
+
+    if (password) {
+      await syncInternalPassword(adminClient, resolvedProfileId, normalizedEmail, password);
+    }
+  } catch (error) {
+    return fail(
+      "BARBER_PROFILE_SAVE_FAILED",
+      error instanceof Error ? error.message : "Nao foi possivel sincronizar as credenciais internas do barbeiro.",
+      400
+    );
+  }
+
+  const savedProfile = await getBarberProfileById(adminClient, resolvedProfileId);
+  if (!savedProfile) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro salvo, mas nao foi possivel recarregar o cadastro.", 500);
+  }
+
+  return ok(
+    isCreate ? "BARBER_CREATED" : "BARBER_UPDATED",
+    isCreate ? "Barbeiro criado com sucesso." : "Barbeiro atualizado com sucesso.",
+    { barber: mapBarberResponse(savedProfile) }
+  );
+}
+
+async function updateBarberActiveState(
+  adminClient: ReturnType<typeof createClient>,
+  profileId: string,
+  isActive: boolean
+) {
+  const existingProfile = await getBarberProfileById(adminClient, profileId);
+  if (!existingProfile) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro nao encontrado.", 404);
+  }
+
+  const nextStatus = isActive ? "active" : "inactive";
+  const nextDeletedAt = isActive ? null : existingProfile.deleted_at;
+
+  const { error: profileError } = await adminClient
+    .from("barber_profiles")
+    .update({
+      is_active: isActive,
+      status: nextStatus,
+      deleted_at: nextDeletedAt
+    })
+    .eq("id", profileId);
+
+  if (profileError) {
+    return fail("BARBER_STATUS_UPDATE_FAILED", profileError.message, 400);
+  }
+
+  const { error: barberError } = await adminClient
+    .from("barbers")
+    .update({
+      is_active: isActive,
+      status: nextStatus,
+      deleted_at: nextDeletedAt
+    })
+    .eq("id", existingProfile.barber_id);
+
+  if (barberError) {
+    return fail("BARBER_STATUS_UPDATE_FAILED", barberError.message, 400);
+  }
+
+  const refreshed = await getBarberProfileById(adminClient, profileId);
+  if (!refreshed) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro atualizado, mas nao foi possivel recarregar o cadastro.", 500);
+  }
+
+  return ok(
+    isActive ? "BARBER_REACTIVATED" : "BARBER_DEACTIVATED",
+    isActive ? "Barbeiro reativado com sucesso." : "Barbeiro desativado com sucesso.",
+    { barber: mapBarberResponse(refreshed) }
+  );
+}
+
+async function deleteBarber(adminClient: ReturnType<typeof createClient>, profileId: string) {
+  const existingProfile = await getBarberProfileById(adminClient, profileId);
+  if (!existingProfile) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro nao encontrado.", 404);
+  }
+
+  const dependencies = await countBarberDependencies(adminClient, existingProfile.barber_id);
+  const hasDependencies =
+    dependencies.appointments > 0 ||
+    dependencies.services > 0 ||
+    dependencies.availability > 0 ||
+    dependencies.scheduleBlocks > 0;
+
+  if (hasDependencies) {
+    return fail(
+      "BARBER_DELETE_CONFLICT",
+      "Este barbeiro possui dependencias e nao pode ser excluido fisicamente. Desative o cadastro para manter o historico.",
+      409,
+      { dependencies }
+    );
+  }
+
+  const { error: credentialDeleteError } = await adminClient
+    .from("barber_auth_credentials")
+    .delete()
+    .eq("barber_profile_id", existingProfile.id);
+
+  if (credentialDeleteError) {
+    return fail("BARBER_DELETE_FAILED", credentialDeleteError.message, 400);
+  }
+
+  const { error: profileDeleteError } = await adminClient.from("barber_profiles").delete().eq("id", existingProfile.id);
+  if (profileDeleteError) {
+    return fail("BARBER_DELETE_FAILED", profileDeleteError.message, 400);
+  }
+
+  const { error: barberDeleteError } = await adminClient.from("barbers").delete().eq("id", existingProfile.barber_id);
+  if (barberDeleteError) {
+    return fail("BARBER_DELETE_FAILED", barberDeleteError.message, 400);
+  }
+
+  return ok("BARBER_DELETED", "Barbeiro excluido em definitivo.", {
+    profileId: existingProfile.id,
+    barberId: existingProfile.barber_id
+  });
+}
+
+async function resetBarberPassword(
+  adminClient: ReturnType<typeof createClient>,
+  profileId: string,
+  password: string
+) {
+  const existingProfile = await getBarberProfileById(adminClient, profileId);
+  if (!existingProfile) {
+    return fail("BARBER_NOT_FOUND", "Barbeiro nao encontrado.", 404);
+  }
+
+  if (!password.trim()) {
+    return fail("BARBER_PASSWORD_REQUIRED", "Nova senha obrigatoria.", 400);
+  }
+
+  try {
+    await syncInternalPassword(adminClient, existingProfile.id, existingProfile.email, password.trim());
+  } catch (error) {
+    return fail(
+      "BARBER_PASSWORD_RESET_FAILED",
+      error instanceof Error ? error.message : "Nao foi possivel atualizar a senha interna do barbeiro.",
+      400
+    );
+  }
+
+  return ok(
+    "BARBER_PASSWORD_RESET",
+    "Senha interna do barbeiro atualizada com sucesso.",
+    {
+      profileId: existingProfile.id,
+      barberId: existingProfile.barber_id
+    }
+  );
 }
 
 Deno.serve(async (request) => {
@@ -275,295 +569,63 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-    const authHeader = request.headers.get("Authorization") ?? "";
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader
-        }
-      }
-    });
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
-
-    const {
-      data: { user }
-    } = await userClient.auth.getUser();
-
-    if (!user) {
-      return json({ error: "Nao autenticado." }, 401);
+    const auth = await requireAdminContext(request);
+    if ("error" in auth) {
+      return auth.error;
     }
 
-    const { data: profile, error: profileError } = await adminClient
-      .from("staff_profiles")
-      .select("role, is_active")
-      .eq("id", user.id)
-      .single();
+    const payload = (await request.json()) as {
+      action?: StaffAction;
+      staff?: BarberPayload;
+    };
 
-    const isHardcodedAdmin = normalizeEmail(user.email) === HARDCODED_ADMIN_EMAIL;
-
-    if ((profileError || profile?.role !== "admin" || !profile?.is_active) && !isHardcodedAdmin) {
-      return json(
-        {
-          error:
-            "A conta autenticada nao pode gerenciar a equipe. Use um usuario com registro ativo em staff_profiles, role = admin e faca login novamente se a sessao estiver desatualizada."
-        },
-        403
-      );
-    }
-
-    const payload = (await request.json()) as { action?: StaffAction; staff?: StaffPayload };
     const action = payload.action;
-    const staff = payload.staff ?? {};
+    const barber = payload.staff ?? {};
 
     if (!action) {
-      return json({ error: "Acao obrigatoria." }, 400);
+      return fail("BARBER_ACTION_REQUIRED", "Acao obrigatoria.", 400);
     }
 
-    if (action === "reset-password") {
-      if (!staff.id || !staff.password) {
-        return json({ error: "Usuario e nova senha sao obrigatorios." }, 400);
-      }
-
-      const existingProfile = await getStaffProfileById(adminClient, staff.id);
-      if (!existingProfile) {
-        return json({ error: "Perfil nao encontrado." }, 404);
-      }
-
-      const { error } = await adminClient.auth.admin.updateUserById(staff.id, {
-        password: staff.password
-      });
-
-      if (error) {
-        return json({ error: error.message }, 400);
-      }
-
-      await syncStaffAppPassword(adminClient, staff.id, existingProfile.email, staff.password);
-
-      return json({ success: true });
+    if (action === "create_barber" || action === "update_barber" || action === "upsert") {
+      const normalizedAction = action === "create_barber" || action === "update_barber" ? action : barber.id ? "update_barber" : "create_barber";
+      return await saveBarber(auth.adminClient, auth.adminUserId, normalizedAction, barber);
     }
 
-    if (action === "toggle-active") {
-      if (!staff.id) {
-        return json({ error: "Usuario obrigatorio." }, 400);
+    if (action === "deactivate_barber" || (action === "toggle-active" && barber.isActive === false)) {
+      if (!barber.id) {
+        return fail("BARBER_ID_REQUIRED", "Perfil do barbeiro obrigatorio.", 400);
       }
 
-      const activeFlag = Boolean(staff.isActive);
-      const { data: existingProfile, error: existingProfileError } = await adminClient
-        .from("staff_profiles")
-        .select("id, barber_id, role")
-        .eq("id", staff.id)
-        .single();
-
-      if (existingProfileError || !existingProfile) {
-        return json({ error: "Perfil nao encontrado." }, 404);
-      }
-
-      const { error: profileUpdateError } = await adminClient
-        .from("staff_profiles")
-        .update({ is_active: activeFlag })
-        .eq("id", staff.id);
-
-      if (profileUpdateError) {
-        return json({ error: profileUpdateError.message }, 400);
-      }
-
-      if (existingProfile.role === "barber" && existingProfile.barber_id) {
-        const { error: barberUpdateError } = await adminClient
-          .from("barbers")
-          .update({ is_active: activeFlag })
-          .eq("id", existingProfile.barber_id);
-
-        if (barberUpdateError) {
-          return json({ error: barberUpdateError.message }, 400);
-        }
-      }
-
-      return json({ success: true });
+      return await updateBarberActiveState(auth.adminClient, barber.id, false);
     }
 
-    if (action === "delete") {
-      if (!staff.id) {
-        return json({ error: "Usuario obrigatorio." }, 400);
+    if (action === "reactivate_barber" || (action === "toggle-active" && barber.isActive === true)) {
+      if (!barber.id) {
+        return fail("BARBER_ID_REQUIRED", "Perfil do barbeiro obrigatorio.", 400);
       }
 
-      if (staff.id === user.id) {
-        return json({ error: "Voce nao pode excluir o proprio usuario administrador." }, 400);
-      }
-
-      const existingProfile = await getStaffProfileById(adminClient, staff.id);
-      if (!existingProfile) {
-        return json({ error: "Perfil nao encontrado." }, 404);
-      }
-
-      const avatarCleanup = deleteManagedBarberAvatar(adminClient, existingProfile.id, existingProfile.avatar_url ?? null);
-
-      if (existingProfile.role === "barber" && existingProfile.barber_id) {
-        const { error: barberDeleteError } = await adminClient.from("barbers").delete().eq("id", existingProfile.barber_id);
-
-        if (barberDeleteError) {
-          return json({ error: barberDeleteError.message }, 400);
-        }
-      } else {
-        const { error: profileDeleteError } = await adminClient.from("staff_profiles").delete().eq("id", existingProfile.id);
-
-        if (profileDeleteError) {
-          return json({ error: profileDeleteError.message }, 400);
-        }
-      }
-
-      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(existingProfile.id);
-      if (authDeleteError) {
-        return json({ error: authDeleteError.message }, 400);
-      }
-
-      await avatarCleanup;
-
-      return json({ success: true });
+      return await updateBarberActiveState(auth.adminClient, barber.id, true);
     }
 
-    if (action !== "upsert") {
-      return json({ error: "Acao invalida." }, 400);
-    }
-
-    if (!staff.email || !staff.fullName || !staff.role) {
-      return json({ error: "Email, nome e role sao obrigatorios." }, 400);
-    }
-
-    const normalizedEmail = normalizeEmail(staff.email);
-    const existingProfileByEmail = await getStaffProfileByEmail(adminClient, normalizedEmail);
-
-    let userId = staff.id ?? existingProfileByEmail?.id;
-    let createdUserId: string | null = null;
-    let createdBarberId: string | null = null;
-
-    if (staff.id && existingProfileByEmail && existingProfileByEmail.id !== staff.id) {
-      return json(
-        {
-          error:
-            "Ja existe outro staff_profiles usando este email. Sincronize ou remova o perfil antigo antes de reutilizar o email."
-        },
-        400
-      );
-    }
-
-    if (userId) {
-      try {
-        await updateAuthUser(adminClient, userId, normalizedEmail, staff.fullName, staff.password);
-      } catch (error) {
-        return json({ error: error instanceof Error ? error.message : "Falha ao atualizar usuario." }, 400);
-      }
-    } else {
-      if (!staff.password) {
-        return json({ error: "Senha inicial obrigatoria para novo barbeiro." }, 400);
+    if (action === "delete_barber" || action === "delete") {
+      if (!barber.id) {
+        return fail("BARBER_ID_REQUIRED", "Perfil do barbeiro obrigatorio.", 400);
       }
 
-      const { data, error } = await adminClient.auth.admin.createUser({
-        email: normalizedEmail,
-        password: staff.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: staff.fullName
-        }
-      });
-
-      if (error || !data.user) {
-        return json({ error: error?.message ?? "Falha ao criar usuario." }, 400);
-      }
-
-      userId = data.user.id;
-      createdUserId = data.user.id;
+      return await deleteBarber(auth.adminClient, barber.id);
     }
 
-    if (!userId) {
-      return json({ error: "Nao foi possivel resolver o usuario autenticado para este perfil." }, 400);
-    }
-
-    const ownership = await ensureProfileOwnership(adminClient, userId, normalizedEmail);
-    if ("error" in ownership) {
-      if (createdUserId) {
-        await cleanupCreatedResources(adminClient, createdBarberId, createdUserId);
-      }
-      return json({ error: ownership.error }, 400);
-    }
-
-    const existingProfile = ownership.profileById ?? ownership.profileByEmail ?? null;
-
-    let barberId: string | null = null;
-
-    try {
-      if (staff.role === "barber") {
-        const targetBarberId = staff.barber?.id ?? staff.barberId ?? existingProfile?.barber_id ?? null;
-
-        if (!targetBarberId && !staff.barber) {
-          throw new Error("Perfis com role barber exigem um barbeiro vinculado ou dados para criar um novo.");
-        }
-
-        const savedBarber = await saveBarberStaffProfile(adminClient, userId, {
-          ...staff,
-          barberId: targetBarberId,
-          barber: staff.barber
-            ? {
-                ...staff.barber,
-                id: targetBarberId ?? staff.barber.id
-              }
-            : {
-                id: targetBarberId ?? undefined,
-                name: staff.fullName,
-                bio: "",
-                phone: staff.phone ?? null,
-                avatarUrl: staff.avatarUrl ?? null,
-                specialties: [],
-                isActive: Boolean(staff.isActive ?? true)
-              }
-        });
-
-        barberId = savedBarber.barberId;
-        if (!targetBarberId) {
-          createdBarberId = savedBarber.barberId;
-        }
-      } else {
-        barberId = null;
-
-        const profilePayload = {
-          id: userId,
-          email: normalizedEmail,
-          full_name: staff.fullName,
-          role: staff.role,
-          phone: staff.phone ?? null,
-          avatar_url: staff.avatarUrl ?? null,
-          barber_id: null,
-          is_active: Boolean(staff.isActive ?? true)
-        };
-
-        const { error: saveError } = await adminClient.from("staff_profiles").upsert(profilePayload, { onConflict: "id" });
-
-        if (saveError) {
-          throw new Error(saveError.message);
-        }
+    if (action === "reset_password" || action === "reset-password") {
+      if (!barber.id) {
+        return fail("BARBER_ID_REQUIRED", "Perfil do barbeiro obrigatorio.", 400);
       }
 
-      await syncStaffAppCredentialEmail(adminClient, userId, normalizedEmail);
-
-      if (staff.password) {
-        await syncStaffAppPassword(adminClient, userId, normalizedEmail, staff.password);
-      }
-
-      return json({
-        success: true,
-        staff: {
-          id: userId
-        },
-        barberId
-      });
-    } catch (error) {
-      await cleanupCreatedResources(adminClient, createdBarberId, createdUserId);
-      return json({ error: error instanceof Error ? error.message : "Erro interno." }, 400);
+      return await resetBarberPassword(auth.adminClient, barber.id, barber.password ?? "");
     }
+
+    return fail("BARBER_ACTION_INVALID", "Acao invalida.", 400);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Erro interno." }, 500);
+    const message = error instanceof Error ? error.message : "Erro interno ao gerenciar barbeiros.";
+    return fail("BARBER_INTERNAL_ERROR", message, 500);
   }
 });

@@ -83,15 +83,53 @@ export function useBarbeiros(includeInactive = false, withAdminData = false, ses
       }
     },
     alternarStatus: async (profileId: string, isActive: boolean) => {
-      await toggleBarbeiro(profileId, isActive);
-      await refresh();
+      const previousBarbeiros = barbeiros;
+      const previousBarbeirosAdmin = barbeirosAdmin;
+
+      setBarbeirosAdmin((current) =>
+        current.map((item) => (item.profileId === profileId ? { ...item, isActive } : item))
+      );
+      setBarbeiros((current) => current.map((item) => {
+        const matchingAdmin = previousBarbeirosAdmin.find((adminItem) => adminItem.profileId === profileId);
+        return matchingAdmin && item.id === matchingAdmin.id ? { ...item, isActive } : item;
+      }));
+
+      try {
+        await toggleBarbeiro(profileId, isActive);
+        await refresh();
+      } catch (nextError) {
+        setBarbeiros(previousBarbeiros);
+        setBarbeirosAdmin(previousBarbeirosAdmin);
+        throw nextError;
+      }
     },
     resetarSenha: async (profileId: string, password: string) => {
       await resetSenhaBarbeiro(profileId, password);
     },
     excluir: async (profileId: string) => {
-      await excluirBarbeiro(profileId);
-      await refresh();
+      const previousBarbeiros = barbeiros;
+      const previousBarbeirosAdmin = barbeirosAdmin;
+      const previousDisponibilidade = disponibilidade;
+      const previousBloqueiosAgenda = bloqueiosAgenda;
+      const deletedBarber = barbeirosAdmin.find((item) => item.profileId === profileId);
+
+      setBarbeirosAdmin((current) => current.filter((item) => item.profileId !== profileId));
+      if (deletedBarber) {
+        setBarbeiros((current) => current.filter((item) => item.id !== deletedBarber.id));
+        setDisponibilidade((current) => current.filter((item) => item.barberId !== deletedBarber.id));
+        setBloqueiosAgenda((current) => current.filter((item) => item.barberId !== deletedBarber.id));
+      }
+
+      try {
+        await excluirBarbeiro(profileId);
+        await refresh();
+      } catch (nextError) {
+        setBarbeiros(previousBarbeiros);
+        setBarbeirosAdmin(previousBarbeirosAdmin);
+        setDisponibilidade(previousDisponibilidade);
+        setBloqueiosAgenda(previousBloqueiosAgenda);
+        throw nextError;
+      }
     }
   };
 }

@@ -6,6 +6,7 @@ import { BotaoVoltar } from "../../components/layout/BotaoVoltar.tsx";
 import { Navbar } from "../../components/layout/Navbar.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Spinner } from "../../components/ui/Spinner.tsx";
+import { StatusPanel } from "../../components/ui/StatusPanel.tsx";
 import { useAgendamentos } from "../../hooks/useAgendamentos.ts";
 import { useBarbeiros } from "../../hooks/useBarbeiros.ts";
 import { usePromocoes } from "../../hooks/usePromocoes.ts";
@@ -19,9 +20,10 @@ const adminLinks = [
 ];
 
 export function AdminDashboard() {
-  const { dashboard, proximos, loading } = useAgendamentos();
-  const { promocoes } = usePromocoes(true);
-  const { barbeiros, disponibilidade } = useBarbeiros(true);
+  const { dashboard, proximos, error: appointmentsError, loading } = useAgendamentos();
+  const { promocoes, error: promotionsError } = usePromocoes(true);
+  const { barbeiros, disponibilidade, error: barbersError } = useBarbeiros(true);
+  const operationalError = appointmentsError || promotionsError || barbersError;
 
   const alerts = [
     ...promocoes
@@ -71,6 +73,14 @@ export function AdminDashboard() {
         <div className="space-y-6">
           {loading || !dashboard ? <Spinner /> : null}
 
+          {operationalError ? (
+            <StatusPanel
+              description="A area administrativa segue navegavel, mas uma ou mais consultas operacionais nao responderam. Isso evita tela quebrada e isola o ponto de instabilidade para a demonstracao."
+              title={operationalError}
+              tone="warning"
+            />
+          ) : null}
+
           <section className="rounded-[24px] border border-white/8 bg-[rgba(10,10,10,0.24)] p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
@@ -86,6 +96,19 @@ export function AdminDashboard() {
                 <article key={metric.label} className="rounded-[20px] border border-white/8 bg-black/15 p-4">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/45">{metric.label}</p>
                   <p className="mt-3 text-3xl font-semibold text-[#f0ede6]">{metric.value}</p>
+                </article>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {[
+                { label: "Cobertura ativa", value: `${barbeiros.length} barbeiros mapeados`, helper: "Escala vinculada ao painel" },
+                { label: "Agenda configurada", value: `${disponibilidade.length} blocos`, helper: "Disponibilidade lida do backend" },
+                { label: "Campanhas", value: `${promocoes.length} promoções`, helper: "Visibilidade comercial em andamento" }
+              ].map((item) => (
+                <article key={item.label} className="rounded-[20px] border border-[rgba(201,169,110,0.12)] bg-[rgba(201,169,110,0.05)] p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#c9a96e]">{item.label}</p>
+                  <p className="mt-3 text-lg font-semibold text-[#f0ede6]">{item.value}</p>
+                  <p className="mt-2 text-sm text-[rgba(240,237,230,0.58)]">{item.helper}</p>
                 </article>
               ))}
             </div>

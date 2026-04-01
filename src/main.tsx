@@ -4,7 +4,6 @@ import { Toaster } from "sonner";
 
 import App from "./App.tsx";
 import { AuthProvider } from "./hooks/useAuth.tsx";
-import { purgeLegacySupabaseStorage } from "./lib/supabase.ts";
 import "./index.css";
 
 async function migrateAndRegisterPwa() {
@@ -35,7 +34,6 @@ async function migrateAndRegisterPwa() {
   await registration.update();
 }
 
-purgeLegacySupabaseStorage();
 void migrateAndRegisterPwa().catch(() => {});
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

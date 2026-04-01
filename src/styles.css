@@ -1008,6 +1008,12 @@ a {
   font-size: 0.72rem;
 }
 
+.status-pill.pending {
+  border-color: rgba(240, 196, 114, 0.34);
+  background: rgba(240, 196, 114, 0.09);
+  color: var(--text-accent);
+}
+
 .status-pill.confirmed {
   border-color: rgba(81, 196, 145, 0.34);
   background: rgba(81, 196, 145, 0.08);

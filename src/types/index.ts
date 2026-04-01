@@ -25,6 +25,7 @@ export interface Barbeiro {
   avatarUrl: string | null;
   specialties: string[];
   isActive: boolean;
+  status?: "active" | "inactive" | "deleted" | string;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +34,8 @@ export interface BarbeiroAdmin extends Barbeiro {
   profileId: string;
   email: string;
   fullName: string;
+  backendUserId?: string | null;
+  deletedAt?: string | null;
 }
 
 export interface Promocao {
@@ -133,6 +136,7 @@ export interface SessionState {
   session: import("@supabase/supabase-js").Session | null;
   profile: AuthProfile | null;
   loading: boolean;
+  authError: string | null;
   isAdmin: boolean;
   isBarbeiro: boolean;
 }

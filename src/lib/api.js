@@ -11,7 +11,13 @@ import {
   services as fallbackServices,
   staffMembers as fallbackStaffMembers
 } from "../data";
-import { getActiveAuthSession, getSupabaseClient, invokeSupabaseFunction, isSupabaseConfigured } from "./supabase";
+import {
+  getActiveAuthSession,
+  getSupabaseClient,
+  invokeSupabaseFunction,
+  isSupabaseConfigured,
+  recoverFromSupabaseSessionError
+} from "./supabase";
 
 const BARBERS_TABLE = "barbers";
 const BRAND_TABLE = "app_brand_settings";
@@ -249,13 +255,21 @@ async function buildEdgeFunctionRequestError(error) {
     return error;
   }
 
+  const response = error?.context;
+  if (response?.status === 401) {
+    const recovered = await recoverFromSupabaseSessionError(new Error("Sessao expirada ao chamar Edge Function."));
+    if (recovered) {
+      return new Error("Sua sessao expirou. Entre novamente.");
+    }
+  }
+
   const responseMessage = await extractEdgeFunctionResponseMessage(error);
   if (responseMessage) {
     return new Error(responseMessage);
   }
 
   return new Error(
-    "Falha ao chamar a Edge Function de equipe. Verifique se `manage-staff-user` foi publicada no Supabase, se o usuario atual tem staff_profiles.role = admin e is_active = true, e se a sessao foi refeita apos a ultima alteracao de perfil. Se usar PWA, remova a versao instalada antiga antes de testar de novo."
+    "Falha ao chamar a Edge Function administrativa. Verifique se a sessao Supabase do admin ainda e valida, se o usuario atual tem staff_profiles.role = admin e is_active = true, e se uma PWA antiga nao esta servindo bundle desatualizado."
   );
 }
 
@@ -830,6 +844,11 @@ export async function saveStaffAppointment(appointment) {
 }
 
 export async function updateAppointmentStatus(appointmentId, status, sessionProfile = null) {
+  const allowedStatuses = new Set(["pending", "confirmed", "cancelled", "completed"]);
+  if (!allowedStatuses.has(status)) {
+    throw new Error("Status de agendamento invalido.");
+  }
+
   if (!isSupabaseConfigured()) {
     return {
       source: "local",
@@ -838,11 +857,29 @@ export async function updateAppointmentStatus(appointmentId, status, sessionProf
   }
 
   const supabase = getSupabaseClient();
+  if (sessionProfile?.authMode === "app_users") {
+    const { error } = await supabase.rpc("update_barber_appointment_status_app_user", {
+      input_email: sessionProfile.email,
+      input_password: sessionProfile.fallbackSecret ?? "",
+      input_appointment_id: appointmentId,
+      input_status: status
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      source: "supabase-app-users",
+      data: { id: appointmentId, status }
+    };
+  }
+
   const { data, error } = await supabase
     .from("appointments")
     .update({ status })
     .eq("id", appointmentId)
-    .select("id")
+    .select("id, status")
     .single();
 
   if (error) {
@@ -851,7 +888,7 @@ export async function updateAppointmentStatus(appointmentId, status, sessionProf
 
   return {
     source: "supabase",
-    id: data
+    data
   };
 }
 
@@ -1299,6 +1336,10 @@ export async function uploadMediaAsset(file, folder = "general", sessionProfile 
 export { requireAdminStorageAccess };
 
 export async function saveStaffMember(staffMember) {
+  if (staffMember?.role === "barber") {
+    throw new Error("O fluxo legado de staff nao cria barbeiros. Use o painel Admin > Barbeiros.");
+  }
+
   if (!isSupabaseConfigured()) {
     return {
       source: "local",
@@ -1364,7 +1405,13 @@ export async function toggleStaffMemberActive(staffMemberId, isActive) {
 
     return {
       source: "supabase",
-      data: data?.staff ? normalizeStaffMember(data.staff) : { id: staffMemberId, isActive }
+      data:
+        data?.staff
+          ? normalizeStaffMember({
+              ...data.staff,
+              is_active: data.staff.isActive
+            })
+          : { id: staffMemberId, isActive }
     };
   } catch (error) {
     throw await buildEdgeFunctionRequestError(error);
@@ -1392,7 +1439,13 @@ export async function resetStaffPassword(staffMemberId, password) {
 
     return {
       source: "supabase",
-      data: data?.staff ? normalizeStaffMember(data.staff) : { id: staffMemberId }
+      data:
+        data?.staff
+          ? normalizeStaffMember({
+              ...data.staff,
+              is_active: data.staff.isActive
+            })
+          : { id: staffMemberId }
     };
   } catch (error) {
     throw await buildEdgeFunctionRequestError(error);

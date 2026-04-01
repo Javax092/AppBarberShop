@@ -6,7 +6,6 @@ import { z } from "zod";
 
 import { BotaoVoltar } from "../../components/layout/BotaoVoltar.tsx";
 import { useAuth } from "../../hooks/useAuth.tsx";
-import { HARDCODED_ADMIN_EMAIL, HARDCODED_ADMIN_PASSWORD } from "../../lib/auth.ts";
 import { formatSupabaseError } from "../../lib/supabase.ts";
 
 const loginSchema = z.object({
@@ -28,8 +27,8 @@ export function AdminLoginPage() {
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: HARDCODED_ADMIN_EMAIL,
-      password: HARDCODED_ADMIN_PASSWORD
+      email: "",
+      password: ""
     }
   });
 
@@ -41,6 +40,9 @@ export function AdminLoginPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#c9a96e]">Painel administrativo</p>
           <h1 className="mt-4 font-display text-6xl">Admin Login</h1>
           <p className="mt-3 text-sm text-white/70">Acesso restrito para gestão de catálogo, promoções, barbeiros e agendamentos.</p>
+          <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
+            Use um usuário real do Supabase Auth com perfil `admin` ativo em `staff_profiles`.
+          </div>
           {helperMessage ? (
             <div className="mt-5 rounded-[22px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
               {helperMessage}

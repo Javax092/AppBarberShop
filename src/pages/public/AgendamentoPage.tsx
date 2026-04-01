@@ -10,10 +10,13 @@ import { SeletorServico } from "../../components/agendamento/SeletorServico.tsx"
 import { BotaoVoltar } from "../../components/layout/BotaoVoltar.tsx";
 import { Navbar } from "../../components/layout/Navbar.tsx";
 import { EmptyState } from "../../components/ui/EmptyState.tsx";
-import { useAgendamentos } from "../../hooks/useAgendamentos.ts";
+import { Spinner } from "../../components/ui/Spinner.tsx";
+import { StatusPanel } from "../../components/ui/StatusPanel.tsx";
 import { usePublicBookingData } from "../../hooks/usePublicBookingData.ts";
 import { useHorarios } from "../../hooks/useHorarios.ts";
+import { createAgendamento } from "../../lib/agendamentos.ts";
 import { formatSupabaseError } from "../../lib/supabase.ts";
+import { buildAppointmentWhatsAppMessage, buildWhatsAppUrl } from "../../utils/whatsapp.ts";
 import type { HorarioSlot } from "../../types/index.ts";
 
 const stepItems = [
@@ -79,16 +82,25 @@ function formatAppointmentDate(value: string) {
 export function AgendamentoPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { barbers: barbeiros, services: servicos, availability: disponibilidade, scheduleBlocks: bloqueiosAgenda, loading: loadingPublicData } = usePublicBookingData();
-  const { criar } = useAgendamentos();
-
+  const {
+    barbers: barbeiros,
+    services: servicos,
+    availability: disponibilidade,
+    scheduleBlocks: bloqueiosAgenda,
+    error: publicDataError,
+    loading: loadingPublicData
+  } = usePublicBookingData();
   const [step, setStep] = useState(0);
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(searchParams.get("barberId"));
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(searchParams.get("serviceId"));
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [selectedSlot, setSelectedSlot] = useState<HorarioSlot | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [publicCode, setPublicCode] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    publicCode: string;
+    whatsappUrl: string | null;
+    barberName: string;
+  } | null>(null);
 
   const selectedService = useMemo(
     () => servicos.find((item) => item.id === selectedServiceId) ?? null,
@@ -97,6 +109,10 @@ export function AgendamentoPage() {
   const selectedBarber = useMemo(
     () => barbeiros.find((item) => item.id === selectedBarberId) ?? undefined,
     [barbeiros, selectedBarberId]
+  );
+  const bookingBarber = useMemo(
+    () => (selectedSlot ? barbeiros.find((item) => item.id === selectedSlot.barberId) ?? selectedBarber : selectedBarber),
+    [barbeiros, selectedBarber, selectedSlot]
   );
   const preloadedBookingData = useMemo(
     () => ({
@@ -147,7 +163,7 @@ export function AgendamentoPage() {
 
     setSubmitting(true);
     try {
-      const appointment = await criar({
+      const appointment = await createAgendamento({
         barberId: selectedSlot.barberId,
         serviceId: selectedService.id,
         clientName: values.clientName,
@@ -157,7 +173,22 @@ export function AgendamentoPage() {
         notes: ""
       });
 
-      setPublicCode(appointment.publicCode);
+      const resolvedBarber = barbeiros.find((item) => item.id === appointment.barberId) ?? bookingBarber;
+      const barberName = resolvedBarber?.name ?? selectedSlot.barberName;
+      const whatsappMessage = buildAppointmentWhatsAppMessage({
+        clientName: values.clientName,
+        serviceName: selectedService.name,
+        barberName,
+        appointmentDate: date,
+        appointmentTime: selectedSlot.time,
+        publicCode: appointment.publicCode
+      });
+
+      setConfirmation({
+        publicCode: appointment.publicCode,
+        whatsappUrl: buildWhatsAppUrl(resolvedBarber?.phone, whatsappMessage),
+        barberName
+      });
       toast.success("Agendamento confirmado.");
     } catch (error) {
       toast.error(formatSupabaseError(error));
@@ -186,6 +217,21 @@ export function AgendamentoPage() {
             Cancelar
           </button>
         </div>
+
+        {publicDataError ? (
+          <div className="mt-6">
+            <StatusPanel
+              action={
+                <button className="btn-secondary whitespace-nowrap" onClick={() => window.location.reload()} type="button">
+                  Recarregar dados
+                </button>
+              }
+              description="Sem disponibilidade, servicos e equipe nao e possivel concluir a reserva. A tela permanece funcional para a demo e deixa o problema isolado na integracao."
+              title={publicDataError}
+              tone="danger"
+            />
+          </div>
+        ) : null}
 
         <div className="booking-shell mt-6">
           <div className="booking-main">
@@ -276,14 +322,74 @@ export function AgendamentoPage() {
               </div>
             </section>
 
-            {publicCode ? (
-              <EmptyState
-                description={`Seu agendamento foi registrado com sucesso. Código da reserva: ${publicCode}`}
-                title="Reserva confirmada"
-              />
+            {loadingPublicData ? (
+              <div className="surface-elevated mt-6 p-6 sm:p-8">
+                <Spinner label="Carregando disponibilidade, servicos e equipe..." />
+              </div>
             ) : null}
 
-            {!publicCode && step === 0 ? (
+            {confirmation ? (
+              <div className="surface-elevated booking-panel-enter p-6 sm:p-8">
+                <span className="section-kicker">Reserva confirmada</span>
+                <h2 className="mt-3 font-display text-4xl text-[#f0ede6] sm:text-5xl">Agendamento salvo e pronto para contato.</h2>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-[rgba(240,237,230,0.62)]">
+                  Seu horário foi registrado com sucesso. Agora você pode seguir direto para o WhatsApp do barbeiro responsável para manter a conversa no mesmo contexto.
+                </p>
+
+                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                  <div className="choice-card p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#c9a96e]">Código</p>
+                    <p className="mt-3 font-display text-4xl text-[#f0ede6]">{confirmation.publicCode}</p>
+                  </div>
+                  <div className="choice-card p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#c9a96e]">Barbeiro</p>
+                    <p className="mt-3 text-lg font-semibold text-[#f0ede6]">{confirmation.barberName}</p>
+                  </div>
+                  <div className="choice-card p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#c9a96e]">Status</p>
+                    <p className="mt-3 text-lg font-semibold text-[#f0ede6]">
+                      {confirmation.whatsappUrl ? "WhatsApp pronto" : "WhatsApp indisponível"}
+                    </p>
+                  </div>
+                </div>
+
+                {!confirmation.whatsappUrl ? (
+                  <div className="mt-6">
+                    <StatusPanel
+                      compact
+                      description="O agendamento foi salvo, mas este barbeiro ainda não possui telefone válido cadastrado para abrir o WhatsApp."
+                      title="Contato do barbeiro indisponível"
+                      tone="warning"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  {confirmation.whatsappUrl ? (
+                    <a className="btn-primary text-center" href={confirmation.whatsappUrl} rel="noreferrer" target="_blank">
+                      Abrir WhatsApp
+                    </a>
+                  ) : null}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setConfirmation(null);
+                      setStep(0);
+                      setSelectedServiceId(null);
+                      setSelectedSlot(null);
+                    }}
+                    type="button"
+                  >
+                    Fazer novo agendamento
+                  </button>
+                  <button className="btn-secondary" onClick={() => navigate("/")} type="button">
+                    Voltar para a home
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!confirmation && !publicDataError && !loadingPublicData && step === 0 ? (
               <div className="booking-panel-enter">
                 <SeletorBarbeiro
                   barbeiros={barbeiros}
@@ -296,7 +402,7 @@ export function AgendamentoPage() {
               </div>
             ) : null}
 
-            {!publicCode && step === 1 ? (
+            {!confirmation && !publicDataError && !loadingPublicData && step === 1 ? (
               <div className="booking-panel-enter">
                 {!loadingPublicData && servicos.length === 0 ? <EmptyState description="Nenhum serviço disponível no momento." title="Catálogo vazio" /> : null}
                 <SeletorServico
@@ -310,7 +416,7 @@ export function AgendamentoPage() {
               </div>
             ) : null}
 
-            {!publicCode && step === 2 && selectedService ? (
+            {!confirmation && !publicDataError && !loadingPublicData && step === 2 && selectedService ? (
               <div className="booking-panel-enter">
                 <SeletorHorario
                   date={date}
@@ -327,9 +433,9 @@ export function AgendamentoPage() {
               </div>
             ) : null}
 
-            {!publicCode && step === 3 && selectedService && selectedSlot ? (
+            {!confirmation && !publicDataError && !loadingPublicData && step === 3 && selectedService && selectedSlot ? (
               <ResumoAgendamento
-                barber={selectedBarber}
+                barber={bookingBarber}
                 date={date}
                 loading={submitting}
                 onSubmit={finalizeBooking}
@@ -338,7 +444,7 @@ export function AgendamentoPage() {
               />
             ) : null}
 
-            {!publicCode && step > 0 ? (
+            {!confirmation && step > 0 ? (
               <div className="flex justify-start">
                 <button className="btn-secondary" onClick={() => setStep((current) => current - 1)} type="button">
                   Voltar

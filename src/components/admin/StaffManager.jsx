@@ -14,7 +14,6 @@ function validateStaff(form) {
   const errors = {};
   if (!form.fullName?.trim()) errors.fullName = "Informe o nome.";
   if (!/\S+@\S+\.\S+/.test(form.email || "")) errors.email = "Informe um email valido.";
-  if (form.role === "barber" && !form.barberId) errors.barberId = "Vincule um barbeiro.";
   if (!form.id && String(form.password || "").length < 6) errors.password = "Minimo de 6 caracteres.";
   return errors;
 }
@@ -117,7 +116,7 @@ export function StaffManager({
             <span className="mini-badge">Equipe</span>
             <h2>Acesso da equipe</h2>
           </div>
-          <p>Crie, ajuste e recupere acessos da equipe.</p>
+          <p>Crie e ajuste apenas acessos administrativos. Barbeiros sao geridos na tela dedicada.</p>
         </div>
 
         <form className="form-grid" onSubmit={handleSubmit}>
@@ -133,18 +132,9 @@ export function StaffManager({
           </label>
           <label>
             Perfil
-            <select value={staffForm.role} onChange={(event) => onStaffFormChange("role", event.target.value)}>
-              <option value="barber">Barbeiro</option>
+            <select value="admin" onChange={() => onStaffFormChange("role", "admin")}>
               <option value="admin">Admin</option>
             </select>
-          </label>
-          <label>
-            Barbeiro vinculado
-            <select value={staffForm.barberId || ""} onChange={(event) => onStaffFormChange("barberId", event.target.value)}>
-              <option value="">Sem vinculo</option>
-              {barbers.map((barber) => <option key={barber.id} value={barber.id}>{barber.name}</option>)}
-            </select>
-            {errors.barberId ? <span className="staff-manager__error">{errors.barberId}</span> : null}
           </label>
           <label>
             Senha
@@ -161,6 +151,7 @@ export function StaffManager({
             </button>
           </div>
           {staffFeedback ? <p className="feedback-line">{staffFeedback}</p> : null}
+          <p className="feedback-line">Barbeiros internos agora usam tabelas proprias e nao passam por `staff_profiles`.</p>
         </form>
 
         <div className={cx.list}>

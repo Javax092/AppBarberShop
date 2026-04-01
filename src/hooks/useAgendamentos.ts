@@ -18,10 +18,12 @@ export function useAgendamentos(
   const [agendaHoje, setAgendaHoje] = useState<Agendamento[]>([]);
   const [proximos, setProximos] = useState<Agendamento[]>([]);
   const [dashboard, setDashboard] = useState<DashboardResumo | null>(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const [listData, todayData, upcomingData, dashboardData] = await Promise.all([
         listAgendamentos(filters, sessionProfile),
@@ -33,6 +35,8 @@ export function useAgendamentos(
       setAgendaHoje(todayData);
       setProximos(upcomingData);
       setDashboard(dashboardData);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Nao foi possivel carregar os agendamentos.");
     } finally {
       setLoading(false);
     }
@@ -47,6 +51,7 @@ export function useAgendamentos(
     agendaHoje,
     proximos,
     dashboard,
+    error,
     loading,
     refresh,
     criar: async (payload: CreateAppointmentInput) => {

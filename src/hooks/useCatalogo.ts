@@ -6,14 +6,18 @@ import type { Servico, ServicoPayload } from "../types/index.ts";
 
 export function useCatalogo(includeInactive = false) {
   const [servicos, setServicos] = useState<Servico[]>([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const promocoes = await listPromocoes(true);
       const data = await listServicos(promocoes, includeInactive);
       setServicos(data);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Nao foi possivel carregar o catalogo.");
     } finally {
       setLoading(false);
     }
@@ -31,6 +35,7 @@ export function useCatalogo(includeInactive = false) {
   return {
     servicos,
     categorias,
+    error,
     loading,
     refresh,
     salvar: async (payload: ServicoPayload, file?: File | null) => {

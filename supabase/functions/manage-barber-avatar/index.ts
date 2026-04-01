@@ -15,6 +15,10 @@ const MAX_FILE_SIZE = 3 * 1024 * 1024;
 const HARDCODED_ADMIN_EMAIL = "ryanlmxxv@gmail.com";
 const STORAGE_BUCKET = Deno.env.get("SUPABASE_STORAGE_BUCKET") ?? "barbershop-assets";
 
+type ActorContext =
+  | { role: "admin"; adminUserId: string }
+  | { role: "barber"; barberProfileId: string };
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -68,18 +72,18 @@ function decodeBase64(base64: string) {
   return bytes;
 }
 
-async function getStaffProfile(adminClient: ReturnType<typeof createClient>, profileId: string) {
+async function getBarberProfile(adminClient: ReturnType<typeof createClient>, profileId: string) {
   const { data, error } = await adminClient
-    .from("staff_profiles")
-    .select("id, email, role, barber_id, avatar_url, is_active")
+    .from("barber_profiles")
+    .select("id, email, barber_id, avatar_url, is_active, deleted_at")
     .eq("id", profileId)
     .maybeSingle<{
       id: string;
       email: string;
-      role: "admin" | "barber";
       barber_id: string | null;
       avatar_url: string | null;
       is_active: boolean;
+      deleted_at: string | null;
     }>();
 
   if (error) {
@@ -93,12 +97,12 @@ async function getActorContext(
   request: Request,
   adminClient: ReturnType<typeof createClient>,
   body: { fallbackEmail?: string; fallbackPassword?: string }
-) {
+): Promise<ActorContext> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const authHeader = request.headers.get("Authorization") ?? "";
 
-  if (authHeader) {
+  if (authHeader.startsWith("Bearer ")) {
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -108,28 +112,42 @@ async function getActorContext(
     });
 
     const {
-      data: { user }
+      data: { user },
+      error: userError
     } = await userClient.auth.getUser();
 
-    if (user) {
-      const profile = await getStaffProfile(adminClient, user.id);
-      const normalizedEmail = normalizeEmail(user.email);
-      const isAdmin = Boolean(
-        (profile?.role === "admin" && profile?.is_active) || normalizedEmail === HARDCODED_ADMIN_EMAIL
-      );
-
-      return {
-        userId: user.id,
-        role: isAdmin ? "admin" : profile?.role ?? null
-      };
+    if (userError || !user) {
+      throw Object.assign(new Error("Sessao do admin ausente, expirada ou invalida."), { status: 401 });
     }
+
+    const normalizedEmail = normalizeEmail(user.email);
+    const isHardcodedAdmin = normalizedEmail === HARDCODED_ADMIN_EMAIL;
+
+    if (!isHardcodedAdmin) {
+      const { data: profile } = await adminClient
+        .from("staff_profiles")
+        .select("id, role, is_active")
+        .eq("id", user.id)
+        .maybeSingle<{ id: string; role: "admin" | "barber"; is_active: boolean }>();
+
+      if (!profile || profile.role !== "admin" || !profile.is_active) {
+        throw Object.assign(new Error("O usuario autenticado nao tem permissao administrativa ativa."), {
+          status: 403
+        });
+      }
+    }
+
+    return {
+      role: "admin",
+      adminUserId: user.id
+    };
   }
 
   const fallbackEmail = normalizeEmail(body.fallbackEmail);
   const fallbackPassword = body.fallbackPassword?.trim() ?? "";
 
   if (!fallbackEmail || !fallbackPassword) {
-    throw new Error("Autenticacao obrigatoria para atualizar a foto.");
+    throw Object.assign(new Error("Autenticacao obrigatoria para atualizar a foto."), { status: 401 });
   }
 
   const { data, error } = await adminClient.rpc("authenticate_staff", {
@@ -144,12 +162,12 @@ async function getActorContext(
 
   const row = (Array.isArray(data) ? data[0] : data) as { user_id?: string } | null;
   if (!row?.user_id) {
-    throw new Error("Credenciais invalidas para barbeiro.");
+    throw Object.assign(new Error("Credenciais invalidas para barbeiro."), { status: 403 });
   }
 
   return {
-    userId: row.user_id,
-    role: "barber" as const
+    role: "barber",
+    barberProfileId: row.user_id
   };
 }
 
@@ -162,7 +180,7 @@ async function persistAvatar(
   const updates = { avatar_url: avatarPath };
 
   const [profileUpdate, barberUpdate] = await Promise.all([
-    adminClient.from("staff_profiles").update(updates).eq("id", profileId),
+    adminClient.from("barber_profiles").update(updates).eq("id", profileId),
     adminClient.from("barbers").update(updates).eq("id", barberId)
   ]);
 
@@ -198,18 +216,18 @@ Deno.serve(async (request) => {
     const targetProfileId = body.targetProfileId?.trim() ?? "";
 
     if (!targetProfileId) {
-      return json({ error: "Perfil do barbeiro nao informado." }, 400);
+      return json({ code: "BARBER_PROFILE_REQUIRED", message: "Perfil do barbeiro nao informado." }, 400);
     }
 
     const actor = await getActorContext(request, adminClient, body);
-    const targetProfile = await getStaffProfile(adminClient, targetProfileId);
+    const targetProfile = await getBarberProfile(adminClient, targetProfileId);
 
-    if (!targetProfile || targetProfile.role !== "barber" || !targetProfile.barber_id) {
-      return json({ error: "Barbeiro nao encontrado." }, 404);
+    if (!targetProfile || !targetProfile.barber_id || targetProfile.deleted_at) {
+      return json({ code: "BARBER_NOT_FOUND", message: "Barbeiro nao encontrado." }, 404);
     }
 
-    if (actor.role !== "admin" && actor.userId !== targetProfile.id) {
-      return json({ error: "Voce nao tem permissao para alterar esta foto." }, 403);
+    if (actor.role !== "admin" && actor.barberProfileId !== targetProfile.id) {
+      return json({ code: "BARBER_AVATAR_FORBIDDEN", message: "Voce nao tem permissao para alterar esta foto." }, 403);
     }
 
     if (action === "remove") {
@@ -220,7 +238,7 @@ Deno.serve(async (request) => {
         await adminClient.storage.from(STORAGE_BUCKET).remove([currentPath as string]);
       }
 
-      return json({ avatarPath: null, publicUrl: null });
+      return json({ code: "BARBER_AVATAR_REMOVED", message: "Foto removida com sucesso.", avatarPath: null, publicUrl: null });
     }
 
     const mimeType = body.mimeType?.trim().toLowerCase() ?? "";
@@ -228,16 +246,16 @@ Deno.serve(async (request) => {
     const imageBase64 = body.imageBase64?.trim() ?? "";
 
     if (!mimeType || !extension || !imageBase64) {
-      return json({ error: "Arquivo de imagem incompleto." }, 400);
+      return json({ code: "BARBER_AVATAR_INVALID_FILE", message: "Arquivo de imagem incompleto." }, 400);
     }
 
     if (!(mimeType in ALLOWED_TYPES) || !ALLOWED_TYPES[mimeType].includes(extension)) {
-      return json({ error: "Formato de arquivo nao permitido." }, 400);
+      return json({ code: "BARBER_AVATAR_UNSUPPORTED_TYPE", message: "Formato de arquivo nao permitido." }, 400);
     }
 
     const bytes = decodeBase64(imageBase64);
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_FILE_SIZE) {
-      return json({ error: "A foto deve ter no maximo 3 MB." }, 400);
+      return json({ code: "BARBER_AVATAR_TOO_LARGE", message: "A foto deve ter no maximo 3 MB." }, 400);
     }
 
     const avatarPath = `barbers/${targetProfile.id}/avatar-${crypto.randomUUID()}.${extension}`;
@@ -261,11 +279,14 @@ Deno.serve(async (request) => {
     const { data } = adminClient.storage.from(STORAGE_BUCKET).getPublicUrl(avatarPath);
 
     return json({
+      code: "BARBER_AVATAR_UPDATED",
+      message: "Foto atualizada com sucesso.",
       avatarPath,
       publicUrl: data.publicUrl
     });
   } catch (error) {
+    const status = typeof error === "object" && error && "status" in error ? Number((error as { status: number }).status) : 500;
     const message = error instanceof Error ? error.message : "Falha ao atualizar a foto.";
-    return json({ error: message }, 500);
+    return json({ code: "BARBER_AVATAR_ERROR", message }, status);
   }
 });

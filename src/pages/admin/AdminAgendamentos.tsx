@@ -7,6 +7,7 @@ import { EmptyState } from "../../components/ui/EmptyState.tsx";
 import { Spinner } from "../../components/ui/Spinner.tsx";
 import { useAgendamentos } from "../../hooks/useAgendamentos.ts";
 import { useBarbeiros } from "../../hooks/useBarbeiros.ts";
+import { getAllowedStatusActions, getStatusAgendamentoLabel } from "../../lib/agendamentos.ts";
 import { formatSupabaseError } from "../../lib/supabase.ts";
 import type { StatusAgendamento } from "../../types/index.ts";
 
@@ -22,6 +23,7 @@ export function AdminAgendamentos() {
   const [barberId, setBarberId] = useState("");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState<StatusAgendamento | "all">("all");
+  const [actionId, setActionId] = useState("");
   const { barbeiros } = useBarbeiros(true);
   const { agendamentos, loading, atualizarStatus } = useAgendamentos({
     barberId: barberId || undefined,
@@ -52,6 +54,51 @@ export function AdminAgendamentos() {
     link.download = "agendamentos.csv";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleStatusChange(id: string, currentStatus: StatusAgendamento, nextStatus: StatusAgendamento) {
+    const { canCancel, canComplete, canConfirm } = getAllowedStatusActions(currentStatus);
+
+    if (nextStatus === "confirmed" && !canConfirm) {
+      toast.error("Somente agendamentos pendentes podem ser confirmados.");
+      return;
+    }
+
+    if (nextStatus === "cancelled" && !canCancel) {
+      toast.error("Nao e possivel cancelar um agendamento concluido ou ja cancelado.");
+      return;
+    }
+
+    if (nextStatus === "completed" && !canComplete) {
+      toast.error("Somente agendamentos confirmados podem ser concluidos.");
+      return;
+    }
+
+    const confirmed =
+      nextStatus === "cancelled"
+        ? window.confirm("Deseja cancelar este agendamento? Essa acao preserva o historico interno.")
+        : nextStatus === "completed"
+          ? window.confirm("Confirmar a conclusao deste atendimento?")
+          : true;
+    if (!confirmed) {
+      return;
+    }
+
+    setActionId(id);
+    try {
+      await atualizarStatus(id, nextStatus);
+      toast.success(
+        nextStatus === "confirmed"
+          ? "Agendamento confirmado com sucesso."
+          : nextStatus === "cancelled"
+            ? "Agendamento cancelado com sucesso."
+            : "Atendimento concluido com sucesso."
+      );
+    } catch (error) {
+      toast.error(formatSupabaseError(error));
+    } finally {
+      setActionId("");
+    }
   }
 
   return (
@@ -122,19 +169,19 @@ export function AdminAgendamentos() {
                               : "status-badge-confirmed"
                       }`}
                     >
-                      {item.status}
+                      {getStatusAgendamentoLabel(item.status)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <button className="btn-secondary px-3 py-2" onClick={() => void atualizarStatus(item.id, "confirmed")} type="button">
-                        Confirmar
+                      <button className="btn-secondary px-3 py-2" disabled={actionId === item.id || item.status !== "pending"} onClick={() => void handleStatusChange(item.id, item.status, "confirmed")} type="button">
+                        {actionId === item.id ? "Confirmando..." : "Confirmar"}
                       </button>
-                      <button className="btn-secondary px-3 py-2" onClick={() => void atualizarStatus(item.id, "cancelled")} type="button">
-                        Cancelar
+                      <button className="btn-secondary px-3 py-2" disabled={actionId === item.id || (item.status !== "pending" && item.status !== "confirmed")} onClick={() => void handleStatusChange(item.id, item.status, "cancelled")} type="button">
+                        {actionId === item.id ? "Cancelando..." : "Cancelar"}
                       </button>
-                      <button className="btn-secondary px-3 py-2" onClick={() => void atualizarStatus(item.id, "completed")} type="button">
-                        Concluir
+                      <button className="btn-secondary px-3 py-2" disabled={actionId === item.id || item.status !== "confirmed"} onClick={() => void handleStatusChange(item.id, item.status, "completed")} type="button">
+                        {actionId === item.id ? "Concluindo..." : "Concluir"}
                       </button>
                     </div>
                   </td>
